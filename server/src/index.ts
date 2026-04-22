@@ -55,7 +55,7 @@ passport.use(
          ON CONFLICT(id) DO UPDATE SET name=excluded.name, picture=excluded.picture`
       ).run(profile.id, email, name, picture || null);
 
-      const user = db.prepare('SELECT * FROM users WHERE id = ?').get(profile.id) as User;
+      const user = db.prepare('SELECT * FROM users WHERE id = ?').get(profile.id) as unknown as User;
       done(null, user);
     }
   )
@@ -63,7 +63,7 @@ passport.use(
 
 passport.serializeUser((user: any, done) => done(null, user.id));
 passport.deserializeUser((id: string, done) => {
-  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(id) as unknown;
   done(null, user || false);
 });
 
