@@ -2,45 +2,54 @@
 @tailwind components;
 @tailwind utilities;
 
-* {
-  box-sizing: border-box;
+* { box-sizing: border-box; }
+
+:root {
+  --bg-main: #f0f9ff;
+  --bg-card: #ffffff;
+  --bg-card-alt: rgba(0,151,167,0.05);
+  --text-primary: #1e293b;
+  --text-muted: #64748b;
+  --accent: #0097a7;
+  --accent-rgb: 0,151,167;
+  --border: rgba(0,151,167,0.25);
+  --header-bg: rgba(240,249,255,0.95);
+  --scrollbar-track: #e0f2fe;
+  --scrollbar-thumb: #7dd3f8;
+}
+
+:root.dark {
+  --bg-main: #070d1a;
+  --bg-card: rgba(10,20,40,0.85);
+  --bg-card-alt: rgba(0,229,255,0.05);
+  --text-primary: #e2e8f0;
+  --text-muted: #7fb3c8;
+  --accent: #00e5ff;
+  --accent-rgb: 0,229,255;
+  --border: rgba(0,229,255,0.2);
+  --header-bg: rgba(7,13,26,0.95);
+  --scrollbar-track: #0d1628;
+  --scrollbar-thumb: #1e4a6e;
 }
 
 body {
   direction: rtl;
   font-family: 'Segoe UI', Arial, sans-serif;
-  background: #070d1a;
+  background: var(--bg-main);
+  color: var(--text-primary);
   min-height: 100vh;
   margin: 0;
-  color: #e2e8f0;
+  transition: background 0.3s ease, color 0.3s ease;
 }
 
-input, textarea, select, button {
-  font-family: inherit;
-}
+input, textarea, select, button { font-family: inherit; }
 
-.task-card {
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-}
-
+.task-card { transition: transform 0.15s ease, box-shadow 0.15s ease; }
 .task-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(0, 229, 255, 0.15);
+  box-shadow: 0 8px 25px rgba(var(--accent-rgb), 0.15);
 }
 
-/* Neon glow effect */
-.neon-border {
-  border: 1px solid rgba(0, 229, 255, 0.3);
-  box-shadow: 0 0 10px rgba(0, 229, 255, 0.1);
-}
-
-.neon-border:hover {
-  border-color: rgba(0, 229, 255, 0.6);
-  box-shadow: 0 0 20px rgba(0, 229, 255, 0.2);
-}
-
-/* Custom scrollbar */
 ::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: #0d1628; }
-::-webkit-scrollbar-thumb { background: #1e4a6e; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #00b8d4; }
+::-webkit-scrollbar-track { background: var(--scrollbar-track); }
+::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 3px; }

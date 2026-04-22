@@ -1,43 +1,36 @@
 export default function LoginPage() {
   return (
-    <div className="min-h-screen flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #070d1a 0%, #0d1f3c 50%, #071a2e 100%)' }}>
-      <div className="rounded-2xl p-10 max-w-md w-full mx-4 text-center" style={{ background: 'rgba(10, 20, 40, 0.9)', border: '1px solid rgba(0,229,255,0.25)', boxShadow: '0 0 40px rgba(0,229,255,0.1), 0 20px 60px rgba(0,0,0,0.5)' }}>
-
+    <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg-main)' }}>
+      <div className="rounded-2xl p-10 max-w-md w-full mx-4 text-center" style={{
+        background: 'var(--bg-card)',
+        border: '1px solid var(--border)',
+        boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
+      }}>
         <div className="flex justify-center mb-6">
           <img src="/logo.png" alt="תבונה" className="h-32 object-contain" />
         </div>
 
-        <p className="mb-8 text-sm" style={{ color: '#7fb3c8' }}>
+        <p className="mb-8 text-sm" style={{ color: 'var(--text-muted)' }}>
           ארגן את המשימות שלך, קבל תזכורות במייל, ועקוב אחרי ההתקדמות שלך
         </p>
 
-        <div className="flex flex-col gap-3 text-right text-sm rounded-xl p-4 mb-8" style={{ background: 'rgba(0,229,255,0.05)', border: '1px solid rgba(0,229,255,0.15)' }}>
-          <div className="flex items-center gap-2" style={{ color: '#a0d8e8' }}>
-            <span className="text-lg">📋</span>
-            <span>ניהול משימות עם עדיפויות וסטטוסים</span>
-          </div>
-          <div className="flex items-center gap-2" style={{ color: '#a0d8e8' }}>
-            <span className="text-lg">⏰</span>
-            <span>תזכורות אישיות לפי תאריך ושעה</span>
-          </div>
-          <div className="flex items-center gap-2" style={{ color: '#a0d8e8' }}>
-            <span className="text-lg">📧</span>
-            <span>שליחת תזכורת למייל שלך</span>
-          </div>
+        <div className="flex flex-col gap-3 text-right text-sm rounded-xl p-4 mb-8" style={{ background: 'var(--bg-card-alt)', border: '1px solid var(--border)' }}>
+          {[
+            { icon: '📋', text: 'ניהול משימות עם עדיפויות וסטטוסים' },
+            { icon: '⏰', text: 'תזכורות אישיות לפי תאריך ושעה' },
+            { icon: '📧', text: 'שליחת תזכורת למייל שלך' },
+          ].map(({ icon, text }) => (
+            <div key={text} className="flex items-center gap-2" style={{ color: 'var(--text-muted)' }}>
+              <span className="text-lg">{icon}</span>
+              <span>{text}</span>
+            </div>
+          ))}
         </div>
 
         <a
           href="/auth/google"
           className="flex items-center justify-center gap-3 w-full font-semibold py-3 px-6 rounded-xl transition-all duration-200"
-          style={{ background: 'rgba(0,229,255,0.1)', border: '1px solid rgba(0,229,255,0.4)', color: '#00e5ff', boxShadow: '0 0 15px rgba(0,229,255,0.1)' }}
-          onMouseEnter={e => {
-            (e.currentTarget as HTMLElement).style.background = 'rgba(0,229,255,0.2)';
-            (e.currentTarget as HTMLElement).style.boxShadow = '0 0 25px rgba(0,229,255,0.3)';
-          }}
-          onMouseLeave={e => {
-            (e.currentTarget as HTMLElement).style.background = 'rgba(0,229,255,0.1)';
-            (e.currentTarget as HTMLElement).style.boxShadow = '0 0 15px rgba(0,229,255,0.1)';
-          }}
+          style={{ background: 'rgba(var(--accent-rgb),0.1)', color: 'var(--accent)', border: '1px solid rgba(var(--accent-rgb),0.4)' }}
         >
           <svg className="w-5 h-5" viewBox="0 0 24 24">
             <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>

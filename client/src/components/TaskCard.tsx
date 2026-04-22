@@ -18,9 +18,9 @@ const priorityConfig = {
 };
 
 const statusConfig = {
-  pending:     { label: 'ממתינה',  color: '#94a3b8', bg: 'rgba(148,163,184,0.12)', icon: '○' },
-  in_progress: { label: 'בביצוע',  color: '#38bdf8', bg: 'rgba(56,189,248,0.12)',  icon: '◑' },
-  completed:   { label: 'הושלמה', color: '#4ade80', bg: 'rgba(74,222,128,0.12)',  icon: '●' },
+  pending:     { label: 'ממתינה', color: '#94a3b8', bg: 'rgba(148,163,184,0.12)', icon: '○' },
+  in_progress: { label: 'בביצוע', color: '#38bdf8', bg: 'rgba(56,189,248,0.12)',  icon: '◑' },
+  completed:   { label: 'הושלמה', color: '#4ade80', bg: 'rgba(74,222,128,0.12)', icon: '●' },
 };
 
 function formatDate(iso: string) {
@@ -62,8 +62,7 @@ export default function TaskCard({ task, onUpdate, onDelete }: Props) {
   const toggleComplete = async () => {
     const newStatus = task.status === 'completed' ? 'pending' : 'completed';
     try {
-      const updated = await api.updateTask(task.id, { ...task, status: newStatus });
-      onUpdate(updated);
+      onUpdate(await api.updateTask(task.id, { ...task, status: newStatus }));
     } catch {
       toast.error('שגיאה בעדכון');
     }
@@ -74,33 +73,23 @@ export default function TaskCard({ task, onUpdate, onDelete }: Props) {
   const isOverdue = task.due_date && task.status !== 'completed' && new Date(task.due_date) < new Date();
   const pendingReminders = task.reminders.filter((r) => !r.sent).length;
 
-  const cardBorder = task.status === 'completed'
-    ? 'rgba(74,222,128,0.2)'
-    : isOverdue
-    ? 'rgba(248,113,113,0.4)'
-    : 'rgba(0,229,255,0.15)';
-
   return (
-    <div
-      className="task-card rounded-2xl transition-all"
-      style={{
-        background: task.status === 'completed' ? 'rgba(10,20,40,0.5)' : 'rgba(10,20,40,0.85)',
-        border: `1px solid ${cardBorder}`,
-        opacity: task.status === 'completed' ? 0.75 : 1,
-      }}
-    >
+    <div className="task-card rounded-2xl transition-all" style={{
+      background: 'var(--bg-card)',
+      border: `1px solid ${isOverdue ? 'rgba(248,113,113,0.4)' : 'var(--border)'}`,
+      opacity: task.status === 'completed' ? 0.75 : 1,
+    }}>
       <div className="p-4">
         {editing ? (
           <TaskForm initial={task} onSubmit={handleUpdate} onCancel={() => setEditing(false)} loading={saving} />
         ) : (
           <>
             <div className="flex items-start gap-3">
-              <button
-                onClick={toggleComplete}
+              <button onClick={toggleComplete}
                 className="mt-0.5 w-5 h-5 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-all"
                 style={task.status === 'completed'
                   ? { background: '#4ade80', borderColor: '#4ade80', color: '#fff' }
-                  : { borderColor: 'rgba(0,229,255,0.4)' }
+                  : { borderColor: 'var(--border)' }
                 }
               >
                 {task.status === 'completed' && (
@@ -112,49 +101,41 @@ export default function TaskCard({ task, onUpdate, onDelete }: Props) {
 
               <div className="flex-1 min-w-0">
                 <h3 className="font-semibold leading-tight" style={{
-                  color: task.status === 'completed' ? '#4a5568' : '#e2e8f0',
+                  color: task.status === 'completed' ? 'var(--text-muted)' : 'var(--text-primary)',
                   textDecoration: task.status === 'completed' ? 'line-through' : 'none',
                 }}>
                   {task.title}
                 </h3>
                 {task.description && (
-                  <p className="text-sm mt-1 line-clamp-2" style={{ color: '#7fb3c8' }}>{task.description}</p>
+                  <p className="text-sm mt-1 line-clamp-2" style={{ color: 'var(--text-muted)' }}>{task.description}</p>
                 )}
-
                 <div className="flex flex-wrap items-center gap-2 mt-2">
-                  <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ color: priority.color, background: priority.bg }}>
-                    {priority.label}
-                  </span>
-                  <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ color: status.color, background: status.bg }}>
-                    {status.icon} {status.label}
-                  </span>
+                  <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ color: priority.color, background: priority.bg }}>{priority.label}</span>
+                  <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ color: status.color, background: status.bg }}>{status.icon} {status.label}</span>
                   {task.due_date && (
-                    <span className="text-xs flex items-center gap-1" style={{ color: isOverdue ? '#f87171' : '#7fb3c8', fontWeight: isOverdue ? 600 : 400 }}>
+                    <span className="text-xs" style={{ color: isOverdue ? '#f87171' : 'var(--text-muted)', fontWeight: isOverdue ? 600 : 400 }}>
                       📅 {formatDate(task.due_date)}{isOverdue && ' (באיחור!)'}
                     </span>
                   )}
                   {pendingReminders > 0 && (
-                    <span className="text-xs flex items-center gap-1" style={{ color: '#00e5ff' }}>
-                      🔔 {pendingReminders} תזכורת{pendingReminders > 1 ? 'ות' : ''}
-                    </span>
+                    <span className="text-xs" style={{ color: 'var(--accent)' }}>🔔 {pendingReminders} תזכורת{pendingReminders > 1 ? 'ות' : ''}</span>
                   )}
                 </div>
               </div>
 
               <div className="flex items-center gap-1 flex-shrink-0">
-                <button onClick={() => setExpanded(!expanded)} className="p-1.5 rounded-lg transition-colors" style={{ color: '#7fb3c8' }} title="תזכורות">🔔</button>
-                <button onClick={() => setEditing(true)} className="p-1.5 rounded-lg transition-colors" style={{ color: '#7fb3c8' }} title="עריכה">✏️</button>
+                <button onClick={() => setExpanded(!expanded)} className="p-1.5 rounded-lg" style={{ color: 'var(--text-muted)' }}>🔔</button>
+                <button onClick={() => setEditing(true)} className="p-1.5 rounded-lg" style={{ color: 'var(--text-muted)' }}>✏️</button>
                 {confirmDelete ? (
                   <div className="flex gap-1">
-                    <button onClick={handleDelete} className="text-xs px-2 py-1 rounded-lg" style={{ background: 'rgba(248,113,113,0.2)', color: '#f87171', border: '1px solid rgba(248,113,113,0.4)' }}>מחק</button>
-                    <button onClick={() => setConfirmDelete(false)} className="text-xs px-2 py-1 rounded-lg" style={{ background: 'rgba(148,163,184,0.1)', color: '#94a3b8' }}>ביטול</button>
+                    <button onClick={handleDelete} className="text-xs px-2 py-1 rounded-lg" style={{ background: 'rgba(248,113,113,0.15)', color: '#f87171', border: '1px solid rgba(248,113,113,0.3)' }}>מחק</button>
+                    <button onClick={() => setConfirmDelete(false)} className="text-xs px-2 py-1 rounded-lg" style={{ background: 'var(--bg-card-alt)', color: 'var(--text-muted)' }}>ביטול</button>
                   </div>
                 ) : (
-                  <button onClick={() => setConfirmDelete(true)} className="p-1.5 rounded-lg transition-colors" style={{ color: '#7fb3c8' }} title="מחיקה">🗑️</button>
+                  <button onClick={() => setConfirmDelete(true)} className="p-1.5 rounded-lg" style={{ color: 'var(--text-muted)' }}>🗑️</button>
                 )}
               </div>
             </div>
-
             {expanded && <ReminderPanel task={task} onUpdate={onUpdate} />}
           </>
         )}
