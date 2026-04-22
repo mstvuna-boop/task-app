@@ -66,12 +66,13 @@ export async function sendDailySummary(
     </body>
     </html>`;
 
-  await resend.emails.send({
+  const { error } = await resend.emails.send({
     from: FROM,
     to: toEmail,
     subject: `📊 סיכום יומי – ${todayStr}`,
     html,
   });
+  if (error) throw new Error(JSON.stringify(error));
 }
 
 export async function sendReminderEmail(
@@ -104,10 +105,11 @@ export async function sendReminderEmail(
     </body>
     </html>`;
 
-  await resend.emails.send({
+  const { error } = await resend.emails.send({
     from: FROM,
     to: toEmail,
     subject: `🔔 תזכורת: ${task.title}`,
     html,
   });
+  if (error) throw new Error(JSON.stringify(error));
 }
