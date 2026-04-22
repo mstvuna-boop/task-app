@@ -18,11 +18,10 @@ export default function Header({ user, onLogout }: Props) {
   };
 
   return (
-    <header className="bg-white shadow-sm border-b border-gray-100 sticky top-0 z-10">
-      <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="text-2xl">✅</span>
-          <h1 className="text-xl font-bold text-gray-800">מנהל משימות</h1>
+    <header className="sticky top-0 z-10" style={{ background: 'rgba(7,13,26,0.95)', borderBottom: '1px solid rgba(0,229,255,0.2)', boxShadow: '0 2px 20px rgba(0,229,255,0.08)', backdropFilter: 'blur(10px)' }}>
+      <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <img src="/logo.png" alt="תבונה" className="h-10 object-contain" />
         </div>
 
         <div className="flex items-center gap-3">
@@ -30,16 +29,28 @@ export default function Header({ user, onLogout }: Props) {
             <img
               src={user.picture}
               alt={user.name}
-              className="w-8 h-8 rounded-full border-2 border-indigo-200"
+              className="w-8 h-8 rounded-full"
+              style={{ border: '2px solid rgba(0,229,255,0.5)', boxShadow: '0 0 10px rgba(0,229,255,0.2)' }}
             />
           )}
           <div className="hidden sm:block text-right">
-            <div className="text-sm font-semibold text-gray-700">{user.name}</div>
-            <div className="text-xs text-gray-400">{user.email}</div>
+            <div className="text-sm font-semibold" style={{ color: '#e2e8f0' }}>{user.name}</div>
+            <div className="text-xs" style={{ color: '#7fb3c8' }}>{user.email}</div>
           </div>
           <button
             onClick={handleLogout}
-            className="text-sm text-gray-500 hover:text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-lg transition-colors border border-gray-200"
+            className="text-sm px-3 py-1.5 rounded-lg transition-all duration-200"
+            style={{ color: '#7fb3c8', border: '1px solid rgba(0,229,255,0.2)' }}
+            onMouseEnter={e => {
+              (e.currentTarget as HTMLElement).style.color = '#ff6b6b';
+              (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,107,107,0.4)';
+              (e.currentTarget as HTMLElement).style.background = 'rgba(255,107,107,0.1)';
+            }}
+            onMouseLeave={e => {
+              (e.currentTarget as HTMLElement).style.color = '#7fb3c8';
+              (e.currentTarget as HTMLElement).style.borderColor = 'rgba(0,229,255,0.2)';
+              (e.currentTarget as HTMLElement).style.background = 'transparent';
+            }}
           >
             התנתק
           </button>
