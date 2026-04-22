@@ -4,15 +4,16 @@ import { Task } from '../types';
 
 const router = Router();
 
+const cast = <T>(v: unknown): T => v as T;
+
 function requireAuth(req: Request, res: Response, next: Function) {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
   next();
 }
 
-// GET /api/tasks
 router.get('/', requireAuth, (req, res) => {
   const userId = (req.user as any).id;
-  const tasks = db
+  const tasks = cast<any[]>(db
     .prepare(
       `SELECT t.*,
         json_group_array(
@@ -30,7 +31,7 @@ router.get('/', requireAuth, (req, res) => {
          t.due_date ASC NULLS LAST,
          t.created_at DESC`
     )
-    .all(userId) as any[];
+    .all(userId));
 
   const result = tasks.map((t) => {
     const reminders = JSON.parse(t.reminders_json).filter(Boolean);
@@ -41,7 +42,6 @@ router.get('/', requireAuth, (req, res) => {
   res.json(result);
 });
 
-// POST /api/tasks
 router.post('/', requireAuth, (req, res) => {
   const userId = (req.user as any).id;
   const { title, description, status, priority, due_date } = req.body;
@@ -53,46 +53,34 @@ router.post('/', requireAuth, (req, res) => {
       `INSERT INTO tasks (user_id, title, description, status, priority, due_date)
        VALUES (?, ?, ?, ?, ?, ?)`
     )
-    .run(
-      userId,
-      title.trim(),
-      description || '',
-      status || 'pending',
-      priority || 'medium',
-      due_date || null
-    );
+    .run(userId, title.trim(), description || '', status || 'pending', priority || 'medium', due_date || null);
 
-  const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(result.lastInsertRowid) as Task;
+  const task = cast<Task>(db.prepare('SELECT * FROM tasks WHERE id = ?').get(result.lastInsertRowid));
   res.status(201).json({ ...task, reminders: [] });
 });
 
-// PUT /api/tasks/:id
 router.put('/:id', requireAuth, (req, res) => {
   const userId = (req.user as any).id;
   const { id } = req.params;
   const { title, description, status, priority, due_date } = req.body;
 
-  const task = db.prepare('SELECT * FROM tasks WHERE id = ? AND user_id = ?').get(id, userId);
+  const task = db.prepare('SELECT * FROM tasks WHERE id = ? AND user_id = ?').get(id, userId) as any;
   if (!task) return res.status(404).json({ error: 'משימה לא נמצאה' });
 
-  const prevTask = task as any;
-  const completedAt = status === 'completed' && prevTask.status !== 'completed'
+  const completedAt = status === 'completed' && task.status !== 'completed'
     ? new Date().toISOString()
-    : status !== 'completed'
-    ? null
-    : (prevTask.completed_at || null);
+    : status !== 'completed' ? null : (task.completed_at || null);
 
   db.prepare(
     `UPDATE tasks SET title=?, description=?, status=?, priority=?, due_date=?, completed_at=?, updated_at=CURRENT_TIMESTAMP
      WHERE id = ? AND user_id = ?`
   ).run(title, description || '', status, priority, due_date || null, completedAt, id, userId);
 
-  const updated = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id) as Task;
-  const reminders = db.prepare('SELECT * FROM reminders WHERE task_id = ?').all(id);
+  const updated = cast<Task>(db.prepare('SELECT * FROM tasks WHERE id = ?').get(id));
+  const reminders = cast<any[]>(db.prepare('SELECT * FROM reminders WHERE task_id = ?').all(id));
   res.json({ ...updated, reminders });
 });
 
-// DELETE /api/tasks/:id
 router.delete('/:id', requireAuth, (req, res) => {
   const userId = (req.user as any).id;
   const { id } = req.params;
@@ -104,7 +92,6 @@ router.delete('/:id', requireAuth, (req, res) => {
   res.json({ success: true });
 });
 
-// POST /api/tasks/:id/reminders
 router.post('/:id/reminders', requireAuth, (req, res) => {
   const userId = (req.user as any).id;
   const { id } = req.params;
@@ -112,7 +99,6 @@ router.post('/:id/reminders', requireAuth, (req, res) => {
 
   const task = db.prepare('SELECT * FROM tasks WHERE id = ? AND user_id = ?').get(id, userId);
   if (!task) return res.status(404).json({ error: 'משימה לא נמצאה' });
-
   if (!remind_at) return res.status(400).json({ error: 'זמן התזכורת נדרש' });
 
   const remindDate = new Date(remind_at);
@@ -128,16 +114,11 @@ router.post('/:id/reminders', requireAuth, (req, res) => {
   res.status(201).json(reminder);
 });
 
-// DELETE /api/tasks/:id/reminders/:reminderId
 router.delete('/:id/reminders/:reminderId', requireAuth, (req, res) => {
   const userId = (req.user as any).id;
   const { id, reminderId } = req.params;
 
-  db.prepare('DELETE FROM reminders WHERE id = ? AND task_id = ? AND user_id = ?').run(
-    reminderId,
-    id,
-    userId
-  );
+  db.prepare('DELETE FROM reminders WHERE id = ? AND task_id = ? AND user_id = ?').run(reminderId, id, userId);
   res.json({ success: true });
 });
 

@@ -4,11 +4,10 @@ import { sendReminderEmail, sendDailySummary } from './email';
 import { Reminder, Task, User } from './types';
 
 export function startScheduler(): void {
-  // Check every minute for pending reminders
   cron.schedule('* * * * *', async () => {
     const now = new Date().toISOString();
 
-    const pendingReminders = db
+    const pendingReminders = (db
       .prepare(
         `SELECT r.*, t.title, t.description, t.status, t.priority, t.due_date,
                 u.email, u.name
@@ -17,7 +16,7 @@ export function startScheduler(): void {
          JOIN users u ON r.user_id = u.id
          WHERE r.sent = 0 AND r.remind_at <= ?`
       )
-      .all(now) as Array<Reminder & Task & User>;
+      .all(now) as unknown) as Array<Reminder & Task & User>;
 
     for (const row of pendingReminders) {
       try {
@@ -34,7 +33,6 @@ export function startScheduler(): void {
         };
 
         await sendReminderEmail(row.email, row.name, task);
-
         db.prepare('UPDATE reminders SET sent = 1 WHERE id = ?').run(row.id);
         console.log(`Reminder sent for task "${row.title}" to ${row.email}`);
       } catch (err) {
@@ -45,7 +43,6 @@ export function startScheduler(): void {
 
   console.log('Reminder scheduler started');
 
-  // Daily summary at 23:00
   cron.schedule('0 23 * * *', async () => {
     console.log('Sending daily summaries...');
     const todayStart = new Date(); todayStart.setHours(0,0,0,0);
@@ -53,21 +50,21 @@ export function startScheduler(): void {
     const ts = todayStart.toISOString();
     const te = todayEnd.toISOString();
 
-    const users = db.prepare('SELECT * FROM users').all() as User[];
+    const users = (db.prepare('SELECT * FROM users').all() as unknown) as User[];
 
     for (const user of users) {
       try {
-        const newTasks = db.prepare(
+        const newTasks = (db.prepare(
           `SELECT * FROM tasks WHERE user_id=? AND created_at >= ? AND created_at <= ?`
-        ).all(user.id, ts, te) as Task[];
+        ).all(user.id, ts, te) as unknown) as Task[];
 
-        const completedTasks = db.prepare(
+        const completedTasks = (db.prepare(
           `SELECT * FROM tasks WHERE user_id=? AND completed_at >= ? AND completed_at <= ?`
-        ).all(user.id, ts, te) as Task[];
+        ).all(user.id, ts, te) as unknown) as Task[];
 
-        const pendingTasks = db.prepare(
+        const pendingTasks = (db.prepare(
           `SELECT * FROM tasks WHERE user_id=? AND status != 'completed'`
-        ).all(user.id) as Task[];
+        ).all(user.id) as unknown) as Task[];
 
         await sendDailySummary(user.email, user.name, newTasks, completedTasks, pendingTasks);
         console.log(`Daily summary sent to ${user.email}`);
