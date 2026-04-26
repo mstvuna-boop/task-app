@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { Task } from '../types';
 import { api } from '../api';
 import toast from 'react-hot-toast';
@@ -139,7 +139,7 @@ function TaskModal({ task, onClose, onToggleComplete }: {
 }
 
 /* ─── Task Pill ─────────────────────────────────────────────── */
-function TaskPill({ task, onDragStart, onMoveToDay, compact = false, onSelect, onTouchDragStart, onToggleComplete }: {
+function TaskPill({ task, onDragStart, onMoveToDay, compact = false, onSelect, onTouchDragStart, onToggleComplete, onCancelDrag }: {
   task: Task;
   onDragStart: () => void;
   onMoveToDay?: (date: Date) => void;
@@ -147,11 +147,10 @@ function TaskPill({ task, onDragStart, onMoveToDay, compact = false, onSelect, o
   onSelect: () => void;
   onTouchDragStart: (e: React.TouchEvent) => void;
   onToggleComplete: () => void;
+  onCancelDrag: () => void;
 }) {
   const [showMove, setShowMove] = useState(false);
   const [moveDate, setMoveDate] = useState('');
-  const touchStartPos = useRef<{ x: number; y: number } | null>(null);
-  const didDrag = useRef(false);
 
   const handleMove = async () => {
     if (!moveDate || !onMoveToDay) return;
@@ -163,19 +162,6 @@ function TaskPill({ task, onDragStart, onMoveToDay, compact = false, onSelect, o
   const p = priorityConfig[task.priority];
   const isCompleted = task.status === 'completed';
 
-  const handleTouchStart = (e: React.TouchEvent) => {
-    touchStartPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-    didDrag.current = false;
-    onTouchDragStart(e);
-  };
-
-  const handleTouchMoveLocal = (e: React.TouchEvent) => {
-    if (!touchStartPos.current) return;
-    const dx = Math.abs(e.touches[0].clientX - touchStartPos.current.x);
-    const dy = Math.abs(e.touches[0].clientY - touchStartPos.current.y);
-    if (dx > 8 || dy > 8) didDrag.current = true;
-  };
-
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     onSelect();
@@ -186,8 +172,8 @@ function TaskPill({ task, onDragStart, onMoveToDay, compact = false, onSelect, o
       <div
         draggable
         onDragStart={(e) => { e.stopPropagation(); onDragStart(); }}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMoveLocal}
+        onTouchStart={onTouchDragStart}
+        onTouchCancel={onCancelDrag}
         onClick={handleClick}
         className={`cursor-grab active:cursor-grabbing border rounded-lg truncate transition-all select-none
           ${compact ? 'text-xs px-1.5 py-0.5' : 'text-sm px-2 py-1'}`}
@@ -267,8 +253,11 @@ export default function CalendarView({ tasks, onUpdate }: Props) {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
 
   // Touch drag state
+  const calendarRef    = useRef<HTMLDivElement>(null);
   const touchDragTask  = useRef<Task | null>(null);
   const touchGhost     = useRef<HTMLDivElement | null>(null);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const touchActive    = useRef(false);
 
   /* ── Toggle complete ── */
   const toggleComplete = useCallback(async (task: Task) => {
@@ -303,50 +292,84 @@ export default function CalendarView({ tasks, onUpdate }: Props) {
   };
 
   /* ── Touch DnD ── */
+  // Register non-passive listeners on the container so preventDefault() actually works
+  useEffect(() => {
+    const el = calendarRef.current;
+    if (!el) return;
+
+    const onMove = (e: TouchEvent) => {
+      if (!touchActive.current) return;
+      e.preventDefault(); // stops page scroll during drag — only works non-passive
+      const t = e.touches[0];
+      if (touchGhost.current) {
+        touchGhost.current.style.left = `${t.clientX}px`;
+        touchGhost.current.style.top  = `${t.clientY}px`;
+      }
+    };
+
+    const onEnd = (e: TouchEvent) => {
+      // Cancel long-press if still pending
+      if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
+      if (!touchActive.current) return;
+      touchActive.current = false;
+
+      const t = e.changedTouches[0];
+      touchGhost.current?.remove();
+      touchGhost.current = null;
+
+      if (touchDragTask.current) {
+        const hit = document.elementFromPoint(t.clientX, t.clientY);
+        const cell = hit?.closest('[data-date]') as HTMLElement | null;
+        if (cell?.dataset.date) {
+          const date = new Date(cell.dataset.date);
+          if (!isNaN(date.getTime())) moveTaskToDay(touchDragTask.current, date);
+        }
+        touchDragTask.current = null;
+      }
+    };
+
+    el.addEventListener('touchmove', onMove, { passive: false });
+    el.addEventListener('touchend',  onEnd,  { passive: false });
+    return () => {
+      el.removeEventListener('touchmove', onMove);
+      el.removeEventListener('touchend',  onEnd);
+    };
+  }, [moveTaskToDay]);
+
   const handleTouchDragStart = (task: Task) => (e: React.TouchEvent) => {
-    touchDragTask.current = task;
+    const startX = e.touches[0].clientX;
+    const startY = e.touches[0].clientY;
 
-    // Create ghost element
-    const ghost = document.createElement('div');
-    ghost.textContent = task.title;
-    ghost.style.cssText = `
-      position:fixed; z-index:9999; pointer-events:none;
-      background:var(--accent); color:#fff;
-      padding:4px 10px; border-radius:8px;
-      font-size:13px; font-weight:600; opacity:0.9;
-      transform:translate(-50%,-50%);
-      left:${e.touches[0].clientX}px; top:${e.touches[0].clientY}px;
-    `;
-    document.body.appendChild(ghost);
-    touchGhost.current = ghost;
+    // Long-press: wait 250 ms before activating drag
+    longPressTimer.current = setTimeout(() => {
+      touchDragTask.current = task;
+      touchActive.current   = true;
+
+      const ghost = document.createElement('div');
+      ghost.textContent = task.title;
+      ghost.style.cssText = `
+        position:fixed; z-index:9999; pointer-events:none;
+        background:#00e5ff; color:#000;
+        padding:5px 12px; border-radius:10px;
+        font-size:13px; font-weight:700; opacity:0.95;
+        box-shadow:0 4px 20px rgba(0,229,255,0.45);
+        transform:translate(-50%,-50%);
+        left:${startX}px; top:${startY}px;
+      `;
+      document.body.appendChild(ghost);
+      touchGhost.current = ghost;
+
+      // Haptic feedback on supported devices
+      if (navigator.vibrate) navigator.vibrate(40);
+    }, 250);
   };
 
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (!touchDragTask.current || !touchGhost.current) return;
-    e.preventDefault();
-    const t = e.touches[0];
-    touchGhost.current.style.left = `${t.clientX}px`;
-    touchGhost.current.style.top  = `${t.clientY}px`;
-  };
-
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    if (!touchDragTask.current) return;
-    const t = e.changedTouches[0];
-
-    // Remove ghost
+  const handleTouchCancelDrag = () => {
+    if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
+    touchActive.current = false;
+    touchDragTask.current = null;
     touchGhost.current?.remove();
     touchGhost.current = null;
-
-    // Find element under finger
-    const el = document.elementFromPoint(t.clientX, t.clientY);
-    const cell = el?.closest('[data-date]') as HTMLElement | null;
-    if (cell?.dataset.date) {
-      const date = new Date(cell.dataset.date);
-      if (!isNaN(date.getTime())) {
-        moveTaskToDay(touchDragTask.current, date);
-      }
-    }
-    touchDragTask.current = null;
   };
 
   /* ── Navigation ── */
@@ -421,6 +444,7 @@ export default function CalendarView({ tasks, onUpdate }: Props) {
               compact={!fullHeight}
               onDragStart={() => setDraggedTask(t)}
               onTouchDragStart={handleTouchDragStart(t)}
+              onCancelDrag={handleTouchCancelDrag}
               onMoveToDay={d => moveTaskToDay(t, d)}
               onSelect={() => setSelectedTask(t)}
               onToggleComplete={() => toggleComplete(t)}
@@ -441,11 +465,7 @@ export default function CalendarView({ tasks, onUpdate }: Props) {
   };
 
   return (
-    <div
-      className="space-y-3"
-      onTouchMove={handleTouchMove as any}
-      onTouchEnd={handleTouchEnd as any}
-    >
+    <div ref={calendarRef} className="space-y-3">
       {/* ─── Task Modal ─── */}
       {selectedTask && (
         <TaskModal
