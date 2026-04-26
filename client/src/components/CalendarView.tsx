@@ -33,8 +33,24 @@ function getTasksForDay(tasks: Task[], date: Date) {
 }
 
 /* ─── Task Detail Modal ─────────────────────────────────────── */
-function TaskModal({ task, onClose }: { task: Task; onClose: () => void }) {
+function TaskModal({ task, onClose, onToggleComplete }: {
+  task: Task;
+  onClose: () => void;
+  onToggleComplete: () => Promise<void>;
+}) {
+  const [loading, setLoading] = useState(false);
   const p = priorityConfig[task.priority];
+  const isCompleted = task.status === 'completed';
+
+  const handleToggle = async () => {
+    setLoading(true);
+    try {
+      await onToggleComplete();
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
@@ -48,7 +64,11 @@ function TaskModal({ task, onClose }: { task: Task; onClose: () => void }) {
       >
         {/* Header */}
         <div className="flex items-start justify-between gap-3 mb-4">
-          <h2 className="text-base font-bold leading-snug" style={{ color: 'var(--text-primary)' }}>
+          <h2 className="text-base font-bold leading-snug" style={{
+            color: 'var(--text-primary)',
+            textDecoration: isCompleted ? 'line-through' : 'none',
+            opacity: isCompleted ? 0.6 : 1,
+          }}>
             {task.title}
           </h2>
           <button
@@ -62,7 +82,7 @@ function TaskModal({ task, onClose }: { task: Task; onClose: () => void }) {
           <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>{task.description}</p>
         )}
 
-        <div className="space-y-2 text-sm">
+        <div className="space-y-2 text-sm mb-5">
           <div className="flex items-center gap-2">
             <span style={{ color: 'var(--text-muted)' }}>עדיפות:</span>
             <span className="font-semibold px-2 py-0.5 rounded-full text-xs"
@@ -70,7 +90,9 @@ function TaskModal({ task, onClose }: { task: Task; onClose: () => void }) {
           </div>
           <div className="flex items-center gap-2">
             <span style={{ color: 'var(--text-muted)' }}>סטטוס:</span>
-            <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{statusLabel[task.status]}</span>
+            <span className="font-medium" style={{ color: isCompleted ? '#4ade80' : 'var(--text-primary)' }}>
+              {isCompleted ? '✅ הושלמה' : statusLabel[task.status]}
+            </span>
           </div>
           {task.due_date && (
             <div className="flex items-center gap-2">
@@ -93,10 +115,23 @@ function TaskModal({ task, onClose }: { task: Task; onClose: () => void }) {
           )}
         </div>
 
+        {/* Complete / Undo button */}
+        <button
+          onClick={handleToggle}
+          disabled={loading}
+          className="w-full py-2.5 rounded-xl text-sm font-bold transition-all mb-2 flex items-center justify-center gap-2"
+          style={isCompleted
+            ? { background: 'rgba(248,113,113,0.12)', color: '#f87171', border: '1px solid rgba(248,113,113,0.3)' }
+            : { background: 'rgba(74,222,128,0.15)', color: '#4ade80', border: '1px solid rgba(74,222,128,0.4)' }
+          }
+        >
+          {loading ? '...' : isCompleted ? '↩ בטל סימון כבוצע' : '✓ סמן כבוצעה'}
+        </button>
+
         <button
           onClick={onClose}
-          className="mt-5 w-full py-2 rounded-xl text-sm font-semibold transition-all"
-          style={{ background: 'rgba(var(--accent-rgb),0.1)', color: 'var(--accent)', border: '1px solid rgba(var(--accent-rgb),0.3)' }}
+          className="w-full py-2 rounded-xl text-sm font-semibold transition-all"
+          style={{ background: 'rgba(var(--accent-rgb),0.08)', color: 'var(--text-muted)', border: '1px solid var(--border)' }}
         >סגור</button>
       </div>
     </div>
@@ -104,13 +139,14 @@ function TaskModal({ task, onClose }: { task: Task; onClose: () => void }) {
 }
 
 /* ─── Task Pill ─────────────────────────────────────────────── */
-function TaskPill({ task, onDragStart, onMoveToDay, compact = false, onSelect, onTouchDragStart }: {
+function TaskPill({ task, onDragStart, onMoveToDay, compact = false, onSelect, onTouchDragStart, onToggleComplete }: {
   task: Task;
   onDragStart: () => void;
   onMoveToDay?: (date: Date) => void;
   compact?: boolean;
   onSelect: () => void;
   onTouchDragStart: (e: React.TouchEvent) => void;
+  onToggleComplete: () => void;
 }) {
   const [showMove, setShowMove] = useState(false);
   const [moveDate, setMoveDate] = useState('');
@@ -169,24 +205,35 @@ function TaskPill({ task, onDragStart, onMoveToDay, compact = false, onSelect, o
         </span>
       </div>
 
-      {!compact && !isCompleted && (
+      {!compact && (
         <div className="hidden group-hover:flex absolute left-0 top-0 bottom-0 items-center gap-1 rounded-lg px-1 z-10 shadow-sm"
           style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+          {/* Complete / undo */}
           <button
-            onClick={(e) => {
-              e.stopPropagation();
-              const tomorrow = new Date(task.due_date ? new Date(task.due_date) : new Date());
-              tomorrow.setDate(tomorrow.getDate() + 1);
-              onMoveToDay?.(tomorrow);
-            }}
-            className="text-xs px-2 py-0.5 rounded whitespace-nowrap transition-all"
-            style={{ background: 'rgba(var(--accent-rgb),0.1)', color: 'var(--accent)' }}
-          >למחר</button>
-          <button
-            onClick={(e) => { e.stopPropagation(); setShowMove(!showMove); }}
-            className="text-xs px-2 py-0.5 rounded whitespace-nowrap"
-            style={{ background: 'var(--bg-card-alt)', color: 'var(--text-muted)' }}
-          >העבר ל...</button>
+            onClick={(e) => { e.stopPropagation(); onToggleComplete(); }}
+            className="text-xs px-2 py-0.5 rounded whitespace-nowrap font-bold transition-all"
+            style={isCompleted
+              ? { background: 'rgba(248,113,113,0.1)', color: '#f87171' }
+              : { background: 'rgba(74,222,128,0.15)', color: '#4ade80' }
+            }
+          >{isCompleted ? '↩' : '✓'}</button>
+          {!isCompleted && <>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                const tomorrow = new Date(task.due_date ? new Date(task.due_date) : new Date());
+                tomorrow.setDate(tomorrow.getDate() + 1);
+                onMoveToDay?.(tomorrow);
+              }}
+              className="text-xs px-2 py-0.5 rounded whitespace-nowrap transition-all"
+              style={{ background: 'rgba(var(--accent-rgb),0.1)', color: 'var(--accent)' }}
+            >למחר</button>
+            <button
+              onClick={(e) => { e.stopPropagation(); setShowMove(!showMove); }}
+              className="text-xs px-2 py-0.5 rounded whitespace-nowrap"
+              style={{ background: 'var(--bg-card-alt)', color: 'var(--text-muted)' }}
+            >העבר ל...</button>
+          </>}
         </div>
       )}
 
@@ -222,6 +269,19 @@ export default function CalendarView({ tasks, onUpdate }: Props) {
   // Touch drag state
   const touchDragTask  = useRef<Task | null>(null);
   const touchGhost     = useRef<HTMLDivElement | null>(null);
+
+  /* ── Toggle complete ── */
+  const toggleComplete = useCallback(async (task: Task) => {
+    const newStatus = task.status === 'completed' ? 'pending' : 'completed';
+    try {
+      const updated = await api.updateTask(task.id, { ...task, status: newStatus });
+      onUpdate(updated);
+      setSelectedTask(updated);
+      toast.success(newStatus === 'completed' ? 'משימה סומנה כבוצעה ✓' : 'סימון בוטל');
+    } catch {
+      toast.error('שגיאה בעדכון המשימה');
+    }
+  }, [onUpdate]);
 
   /* ── Move task ── */
   const moveTaskToDay = useCallback(async (task: Task, targetDate: Date) => {
@@ -363,6 +423,7 @@ export default function CalendarView({ tasks, onUpdate }: Props) {
               onTouchDragStart={handleTouchDragStart(t)}
               onMoveToDay={d => moveTaskToDay(t, d)}
               onSelect={() => setSelectedTask(t)}
+              onToggleComplete={() => toggleComplete(t)}
             />
           ))}
           {dayTasks.length > (fullHeight ? 10 : 3) && (
@@ -386,7 +447,13 @@ export default function CalendarView({ tasks, onUpdate }: Props) {
       onTouchEnd={handleTouchEnd as any}
     >
       {/* ─── Task Modal ─── */}
-      {selectedTask && <TaskModal task={selectedTask} onClose={() => setSelectedTask(null)} />}
+      {selectedTask && (
+        <TaskModal
+          task={selectedTask}
+          onClose={() => setSelectedTask(null)}
+          onToggleComplete={() => toggleComplete(selectedTask)}
+        />
+      )}
 
       {/* ─── Toolbar ─── */}
       <div className="rounded-2xl p-3" style={cardStyle}>
