@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Toaster, toast } from 'react-hot-toast';
 import { api } from './api';
 import { User, Task, TaskStatus, TaskPriority } from './types';
@@ -16,7 +16,6 @@ const statusTabs: { value: FilterStatus; label: string }[] = [
   { value: 'all', label: 'הכל' },
   { value: 'pending', label: 'ממתינות' },
   { value: 'in_progress', label: 'בביצוע' },
-  { value: 'completed', label: 'הושלמו' },
 ];
 
 export default function App() {
@@ -25,6 +24,8 @@ export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [tasksLoading, setTasksLoading] = useState(false);
   const [showNewTask, setShowNewTask] = useState(false);
+  const [showCompleted, setShowCompleted] = useState(false);
+  const completedRef = useRef<HTMLDivElement>(null);
   const [savingNew, setSavingNew] = useState(false);
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
   const [filterPriority, setFilterPriority] = useState<FilterPriority>('all');
@@ -91,12 +92,24 @@ export default function App() {
   const handleUpdateTask = (updated: Task) => setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
   const handleDeleteTask = (id: number) => setTasks((prev) => prev.filter((t) => t.id !== id));
 
+  const matchesSearch = (t: Task) =>
+    !search ||
+    t.title.toLowerCase().includes(search.toLowerCase()) ||
+    t.description.toLowerCase().includes(search.toLowerCase());
+
+  // Main list — active tasks only
   const filtered = tasks.filter((t) => {
+    if (t.status === 'completed') return false;
     if (filterStatus !== 'all' && t.status !== filterStatus) return false;
     if (filterPriority !== 'all' && t.priority !== filterPriority) return false;
-    if (search && !t.title.toLowerCase().includes(search.toLowerCase()) &&
-        !t.description.toLowerCase().includes(search.toLowerCase())) return false;
-    return true;
+    return matchesSearch(t);
+  });
+
+  // Separate completed list — respects search & priority filter only
+  const filteredCompleted = tasks.filter((t) => {
+    if (t.status !== 'completed') return false;
+    if (filterPriority !== 'all' && t.priority !== filterPriority) return false;
+    return matchesSearch(t);
   });
 
   const stats = {
@@ -202,7 +215,7 @@ export default function App() {
                   }
                 >
                   {tab.label}
-                  {tab.value !== 'all' && <span className="mr-1 text-xs opacity-70">({tab.value === 'pending' ? stats.pending : tab.value === 'in_progress' ? stats.inProgress : stats.completed})</span>}
+                  {tab.value !== 'all' && <span className="mr-1 text-xs opacity-70">({tab.value === 'pending' ? stats.pending : stats.inProgress})</span>}
                 </button>
               ))}
             </div>
@@ -224,20 +237,58 @@ export default function App() {
               style={{ border: '4px solid var(--border)', borderTopColor: 'var(--accent)' }}></div>
             טוען משימות...
           </div>
-        ) : filtered.length === 0 ? (
-          <div className="text-center py-16">
-            <div className="text-5xl mb-3">{tasks.length === 0 ? '📋' : '🔍'}</div>
-            <p style={{ color: 'var(--text-muted)' }}>{tasks.length === 0 ? 'אין משימות עדיין' : 'לא נמצאו משימות'}</p>
-            {tasks.length === 0 && (
-              <button onClick={() => setShowNewTask(true)} className="mt-4 text-sm font-medium underline" style={{ color: 'var(--accent)' }}>
-                הוסף את המשימה הראשונה שלך
-              </button>
-            )}
-          </div>
         ) : (
-          <div className="space-y-3">
-            {filtered.map((task) => <TaskCard key={task.id} task={task} onUpdate={handleUpdateTask} onDelete={handleDeleteTask} />)}
-          </div>
+          <>
+            {/* ── Active tasks ── */}
+            {filtered.length === 0 ? (
+              <div className="text-center py-16">
+                <div className="text-5xl mb-3">{tasks.filter(t => t.status !== 'completed').length === 0 ? '📋' : '🔍'}</div>
+                <p style={{ color: 'var(--text-muted)' }}>
+                  {tasks.filter(t => t.status !== 'completed').length === 0 ? 'אין משימות פעילות' : 'לא נמצאו משימות'}
+                </p>
+                {tasks.length === 0 && (
+                  <button onClick={() => setShowNewTask(true)} className="mt-4 text-sm font-medium underline" style={{ color: 'var(--accent)' }}>
+                    הוסף את המשימה הראשונה שלך
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {filtered.map((task) => (
+                  <TaskCard key={task.id} task={task} onUpdate={handleUpdateTask} onDelete={handleDeleteTask} />
+                ))}
+              </div>
+            )}
+
+            {/* ── Completed section ── */}
+            {filteredCompleted.length > 0 && (
+              <div className="mt-6">
+                <button
+                  onClick={() => setShowCompleted(v => !v)}
+                  className="flex items-center gap-2 w-full px-4 py-3 rounded-2xl text-sm font-semibold transition-all"
+                  style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}
+                >
+                  <span className="text-base">{showCompleted ? '▾' : '▸'}</span>
+                  <span>✅ הושלמו</span>
+                  <span className="mr-1 px-2 py-0.5 rounded-full text-xs font-bold"
+                    style={{ background: 'rgba(74,222,128,0.15)', color: '#4ade80' }}>
+                    {filteredCompleted.length}
+                  </span>
+                  <span className="mr-auto text-xs font-normal" style={{ color: 'var(--text-muted)' }}>
+                    {showCompleted ? 'הסתר' : 'הצג'}
+                  </span>
+                </button>
+
+                {showCompleted && (
+                  <div ref={completedRef} className="space-y-2 mt-2">
+                    {filteredCompleted.map((task) => (
+                      <TaskCard key={task.id} task={task} onUpdate={handleUpdateTask} onDelete={handleDeleteTask} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
         ))}
       </main>
     </div>

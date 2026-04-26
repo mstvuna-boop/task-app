@@ -73,11 +73,14 @@ export default function TaskCard({ task, onUpdate, onDelete }: Props) {
   const isOverdue = task.due_date && task.status !== 'completed' && new Date(task.due_date) < new Date();
   const pendingReminders = task.reminders.filter((r) => !r.sent).length;
 
+  const isCompleted = task.status === 'completed';
+
   return (
     <div className="task-card rounded-2xl transition-all" style={{
-      background: 'var(--bg-card)',
-      border: `1px solid ${isOverdue ? 'rgba(248,113,113,0.4)' : 'var(--border)'}`,
-      opacity: task.status === 'completed' ? 0.75 : 1,
+      background: isCompleted ? 'var(--bg-card-alt)' : 'var(--bg-card)',
+      border: `1px solid ${isCompleted ? 'var(--border)' : isOverdue ? 'rgba(248,113,113,0.4)' : 'var(--border)'}`,
+      opacity: isCompleted ? 0.55 : 1,
+      filter: isCompleted ? 'grayscale(30%)' : 'none',
     }}>
       <div className="p-4">
         {editing ? (
@@ -101,8 +104,10 @@ export default function TaskCard({ task, onUpdate, onDelete }: Props) {
 
               <div className="flex-1 min-w-0">
                 <h3 className="font-semibold leading-tight" style={{
-                  color: task.status === 'completed' ? 'var(--text-muted)' : 'var(--text-primary)',
-                  textDecoration: task.status === 'completed' ? 'line-through' : 'none',
+                  color: isCompleted ? 'var(--text-muted)' : 'var(--text-primary)',
+                  textDecoration: isCompleted ? 'line-through' : 'none',
+                  textDecorationThickness: isCompleted ? '2px' : undefined,
+                  textDecorationColor: isCompleted ? 'var(--text-muted)' : undefined,
                 }}>
                   {task.title}
                 </h3>
