@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { Task } from '../types';
 import { api } from '../api';
 import toast from 'react-hot-toast';
@@ -11,13 +11,16 @@ interface Props {
 type CalendarMode = 'day' | 'week' | 'month';
 
 const DAYS_SHORT = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'];
-const DAYS_FULL = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
-const MONTHS = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
+const DAYS_FULL  = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
+const MONTHS     = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
 
-const priorityColor: Record<string, string> = {
-  high: 'bg-red-100 text-red-700 border-red-200',
-  medium: 'bg-yellow-100 text-yellow-700 border-yellow-200',
-  low: 'bg-green-100 text-green-700 border-green-200',
+const priorityConfig: Record<string, { color: string; bg: string; label: string }> = {
+  high:   { color: '#f87171', bg: 'rgba(248,113,113,0.15)', label: 'גבוהה'   },
+  medium: { color: '#fbbf24', bg: 'rgba(251,191,36,0.15)',  label: 'בינונית' },
+  low:    { color: '#4ade80', bg: 'rgba(74,222,128,0.15)',  label: 'נמוכה'   },
+};
+const statusLabel: Record<string, string> = {
+  pending: 'ממתינה', in_progress: 'בביצוע', completed: 'הושלמה',
 };
 
 function isSameDay(a: Date, b: Date) {
@@ -25,19 +28,94 @@ function isSameDay(a: Date, b: Date) {
     a.getMonth() === b.getMonth() &&
     a.getDate() === b.getDate();
 }
-
 function getTasksForDay(tasks: Task[], date: Date) {
   return tasks.filter(t => t.due_date && isSameDay(new Date(t.due_date), date));
 }
 
-function TaskPill({ task, onDragStart, onMoveToDay, compact = false }: {
+/* ─── Task Detail Modal ─────────────────────────────────────── */
+function TaskModal({ task, onClose }: { task: Task; onClose: () => void }) {
+  const p = priorityConfig[task.priority];
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
+      onClick={onClose}
+    >
+      <div
+        className="rounded-2xl p-5 max-w-sm w-full shadow-2xl"
+        style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-start justify-between gap-3 mb-4">
+          <h2 className="text-base font-bold leading-snug" style={{ color: 'var(--text-primary)' }}>
+            {task.title}
+          </h2>
+          <button
+            onClick={onClose}
+            className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-lg"
+            style={{ color: 'var(--text-muted)', background: 'var(--bg-card-alt)' }}
+          >×</button>
+        </div>
+
+        {task.description && (
+          <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>{task.description}</p>
+        )}
+
+        <div className="space-y-2 text-sm">
+          <div className="flex items-center gap-2">
+            <span style={{ color: 'var(--text-muted)' }}>עדיפות:</span>
+            <span className="font-semibold px-2 py-0.5 rounded-full text-xs"
+              style={{ color: p.color, background: p.bg }}>{p.label}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span style={{ color: 'var(--text-muted)' }}>סטטוס:</span>
+            <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{statusLabel[task.status]}</span>
+          </div>
+          {task.due_date && (
+            <div className="flex items-center gap-2">
+              <span style={{ color: 'var(--text-muted)' }}>תאריך יעד:</span>
+              <span style={{ color: 'var(--text-primary)' }}>
+                {new Date(task.due_date).toLocaleString('he-IL', {
+                  day: '2-digit', month: '2-digit', year: 'numeric',
+                  hour: '2-digit', minute: '2-digit',
+                })}
+              </span>
+            </div>
+          )}
+          {task.reminders && task.reminders.length > 0 && (
+            <div className="flex items-center gap-2">
+              <span style={{ color: 'var(--text-muted)' }}>תזכורות:</span>
+              <span style={{ color: 'var(--accent)' }}>
+                🔔 {task.reminders.filter(r => !r.sent).length} פעילות
+              </span>
+            </div>
+          )}
+        </div>
+
+        <button
+          onClick={onClose}
+          className="mt-5 w-full py-2 rounded-xl text-sm font-semibold transition-all"
+          style={{ background: 'rgba(var(--accent-rgb),0.1)', color: 'var(--accent)', border: '1px solid rgba(var(--accent-rgb),0.3)' }}
+        >סגור</button>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Task Pill ─────────────────────────────────────────────── */
+function TaskPill({ task, onDragStart, onMoveToDay, compact = false, onSelect, onTouchDragStart }: {
   task: Task;
   onDragStart: () => void;
   onMoveToDay?: (date: Date) => void;
   compact?: boolean;
+  onSelect: () => void;
+  onTouchDragStart: (e: React.TouchEvent) => void;
 }) {
   const [showMove, setShowMove] = useState(false);
   const [moveDate, setMoveDate] = useState('');
+  const touchStartPos = useRef<{ x: number; y: number } | null>(null);
+  const didDrag = useRef(false);
 
   const handleMove = async () => {
     if (!moveDate || !onMoveToDay) return;
@@ -46,49 +124,86 @@ function TaskPill({ task, onDragStart, onMoveToDay, compact = false }: {
     setMoveDate('');
   };
 
+  const p = priorityConfig[task.priority];
+  const isCompleted = task.status === 'completed';
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    didDrag.current = false;
+    onTouchDragStart(e);
+  };
+
+  const handleTouchMoveLocal = (e: React.TouchEvent) => {
+    if (!touchStartPos.current) return;
+    const dx = Math.abs(e.touches[0].clientX - touchStartPos.current.x);
+    const dy = Math.abs(e.touches[0].clientY - touchStartPos.current.y);
+    if (dx > 8 || dy > 8) didDrag.current = true;
+  };
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onSelect();
+  };
+
   return (
     <div className="group relative">
       <div
         draggable
         onDragStart={(e) => { e.stopPropagation(); onDragStart(); }}
-        className={`cursor-grab active:cursor-grabbing border rounded-lg truncate transition-all
-          ${task.status === 'completed' ? 'bg-gray-100 text-gray-400 border-gray-200 line-through' : priorityColor[task.priority]}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMoveLocal}
+        onClick={handleClick}
+        className={`cursor-grab active:cursor-grabbing border rounded-lg truncate transition-all select-none
           ${compact ? 'text-xs px-1.5 py-0.5' : 'text-sm px-2 py-1'}`}
+        style={{
+          color: isCompleted ? 'var(--text-muted)' : p.color,
+          background: isCompleted ? 'var(--bg-card-alt)' : p.bg,
+          border: `1px solid ${isCompleted ? 'var(--border)' : p.color + '55'}`,
+          textDecoration: isCompleted ? 'line-through' : 'none',
+        }}
         title={task.title}
       >
         <span className="flex items-center gap-1">
-          {task.status === 'completed' ? '✓ ' : ''}
+          {isCompleted ? '✓ ' : ''}
           {task.title}
         </span>
       </div>
-      {!compact && task.status !== 'completed' && (
-        <div className="hidden group-hover:flex absolute left-0 top-0 bottom-0 items-center gap-1 bg-white/90 rounded-lg px-1 z-10 shadow-sm border border-gray-100">
+
+      {!compact && !isCompleted && (
+        <div className="hidden group-hover:flex absolute left-0 top-0 bottom-0 items-center gap-1 rounded-lg px-1 z-10 shadow-sm"
+          style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
           <button
-            onClick={() => {
+            onClick={(e) => {
+              e.stopPropagation();
               const tomorrow = new Date(task.due_date ? new Date(task.due_date) : new Date());
               tomorrow.setDate(tomorrow.getDate() + 1);
               onMoveToDay?.(tomorrow);
             }}
-            className="text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded whitespace-nowrap"
+            className="text-xs px-2 py-0.5 rounded whitespace-nowrap transition-all"
+            style={{ background: 'rgba(var(--accent-rgb),0.1)', color: 'var(--accent)' }}
           >למחר</button>
           <button
-            onClick={() => setShowMove(!showMove)}
-            className="text-xs bg-gray-50 hover:bg-gray-100 text-gray-600 px-2 py-0.5 rounded whitespace-nowrap"
+            onClick={(e) => { e.stopPropagation(); setShowMove(!showMove); }}
+            className="text-xs px-2 py-0.5 rounded whitespace-nowrap"
+            style={{ background: 'var(--bg-card-alt)', color: 'var(--text-muted)' }}
           >העבר ל...</button>
         </div>
       )}
+
       {showMove && (
-        <div className="absolute z-20 bg-white rounded-xl shadow-lg border border-gray-200 p-3 mt-1 min-w-[200px]">
-          <p className="text-xs text-gray-500 mb-2">בחר תאריך חדש:</p>
+        <div className="absolute z-20 rounded-xl shadow-lg p-3 mt-1 min-w-[200px]"
+          style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+          <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>בחר תאריך חדש:</p>
           <input
             type="date"
             value={moveDate}
             onChange={e => setMoveDate(e.target.value)}
-            className="w-full border border-gray-200 rounded-lg px-2 py-1 text-sm mb-2"
+            className="w-full rounded-lg px-2 py-1 text-sm mb-2"
+            style={{ background: 'var(--bg-card-alt)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
           />
           <div className="flex gap-2">
-            <button onClick={handleMove} className="flex-1 bg-indigo-600 text-white text-xs py-1 rounded-lg">אשר</button>
-            <button onClick={() => setShowMove(false)} className="flex-1 bg-gray-100 text-gray-600 text-xs py-1 rounded-lg">ביטול</button>
+            <button onClick={handleMove} className="flex-1 text-white text-xs py-1 rounded-lg" style={{ background: 'var(--accent)' }}>אשר</button>
+            <button onClick={() => setShowMove(false)} className="flex-1 text-xs py-1 rounded-lg" style={{ background: 'var(--bg-card-alt)', color: 'var(--text-muted)' }}>ביטול</button>
           </div>
         </div>
       )}
@@ -96,13 +211,20 @@ function TaskPill({ task, onDragStart, onMoveToDay, compact = false }: {
   );
 }
 
+/* ─── Main CalendarView ─────────────────────────────────────── */
 export default function CalendarView({ tasks, onUpdate }: Props) {
   const today = new Date();
-  const [mode, setMode] = useState<CalendarMode>('month');
+  const [mode, setMode]               = useState<CalendarMode>('month');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
 
-  const moveTaskToDay = async (task: Task, targetDate: Date) => {
+  // Touch drag state
+  const touchDragTask  = useRef<Task | null>(null);
+  const touchGhost     = useRef<HTMLDivElement | null>(null);
+
+  /* ── Move task ── */
+  const moveTaskToDay = useCallback(async (task: Task, targetDate: Date) => {
     const src = task.due_date ? new Date(task.due_date) : new Date();
     targetDate.setHours(src.getHours() || 9, src.getMinutes() || 0);
     try {
@@ -112,51 +234,89 @@ export default function CalendarView({ tasks, onUpdate }: Props) {
     } catch {
       toast.error('שגיאה בהעברת המשימה');
     }
-  };
+  }, [onUpdate]);
 
+  /* ── Desktop DnD ── */
   const handleDrop = (e: React.DragEvent, date: Date) => {
     e.preventDefault();
     if (draggedTask) { moveTaskToDay(draggedTask, new Date(date)); setDraggedTask(null); }
   };
 
-  // ─── Navigation ───────────────────────────────────────────────
+  /* ── Touch DnD ── */
+  const handleTouchDragStart = (task: Task) => (e: React.TouchEvent) => {
+    touchDragTask.current = task;
+
+    // Create ghost element
+    const ghost = document.createElement('div');
+    ghost.textContent = task.title;
+    ghost.style.cssText = `
+      position:fixed; z-index:9999; pointer-events:none;
+      background:var(--accent); color:#fff;
+      padding:4px 10px; border-radius:8px;
+      font-size:13px; font-weight:600; opacity:0.9;
+      transform:translate(-50%,-50%);
+      left:${e.touches[0].clientX}px; top:${e.touches[0].clientY}px;
+    `;
+    document.body.appendChild(ghost);
+    touchGhost.current = ghost;
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!touchDragTask.current || !touchGhost.current) return;
+    e.preventDefault();
+    const t = e.touches[0];
+    touchGhost.current.style.left = `${t.clientX}px`;
+    touchGhost.current.style.top  = `${t.clientY}px`;
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (!touchDragTask.current) return;
+    const t = e.changedTouches[0];
+
+    // Remove ghost
+    touchGhost.current?.remove();
+    touchGhost.current = null;
+
+    // Find element under finger
+    const el = document.elementFromPoint(t.clientX, t.clientY);
+    const cell = el?.closest('[data-date]') as HTMLElement | null;
+    if (cell?.dataset.date) {
+      const date = new Date(cell.dataset.date);
+      if (!isNaN(date.getTime())) {
+        moveTaskToDay(touchDragTask.current, date);
+      }
+    }
+    touchDragTask.current = null;
+  };
+
+  /* ── Navigation ── */
   const navigate = (dir: 1 | -1) => {
     const d = new Date(currentDate);
-    if (mode === 'day') d.setDate(d.getDate() + dir);
-    else if (mode === 'week') d.setDate(d.getDate() + dir * 7);
+    if (mode === 'day')        d.setDate(d.getDate() + dir);
+    else if (mode === 'week')  d.setDate(d.getDate() + dir * 7);
     else { d.setMonth(d.getMonth() + dir); d.setDate(1); }
     setCurrentDate(d);
   };
 
   const getTitle = () => {
-    if (mode === 'day') {
-      return currentDate.toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-    }
+    if (mode === 'day') return currentDate.toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
     if (mode === 'week') {
       const start = getWeekStart(currentDate);
-      const end = new Date(start); end.setDate(start.getDate() + 6);
+      const end   = new Date(start); end.setDate(start.getDate() + 6);
       return `${start.toLocaleDateString('he-IL', { day: 'numeric', month: 'short' })} – ${end.toLocaleDateString('he-IL', { day: 'numeric', month: 'short', year: 'numeric' })}`;
     }
     return `${MONTHS[currentDate.getMonth()]} ${currentDate.getFullYear()}`;
   };
 
-  const goToToday = () => setCurrentDate(new Date());
-
-  // ─── Week helpers ──────────────────────────────────────────────
   const getWeekStart = (d: Date) => {
     const s = new Date(d);
-    s.setDate(s.getDate() - s.getDay()); // Sunday start
+    s.setDate(s.getDate() - s.getDay());
     return s;
   };
-
   const getWeekDays = () => {
     const start = getWeekStart(currentDate);
-    return Array.from({ length: 7 }, (_, i) => {
-      const d = new Date(start); d.setDate(start.getDate() + i); return d;
-    });
+    return Array.from({ length: 7 }, (_, i) => { const d = new Date(start); d.setDate(start.getDate() + i); return d; });
   };
-
-  // ─── Month helpers ─────────────────────────────────────────────
   const getMonthCells = () => {
     const year = currentDate.getFullYear(), month = currentDate.getMonth();
     const firstDay = new Date(year, month, 1).getDay();
@@ -167,19 +327,30 @@ export default function CalendarView({ tasks, onUpdate }: Props) {
     return cells;
   };
 
+  /* ── Day Cell ── */
   const DayCell = ({ date, fullHeight = false }: { date: Date; fullHeight?: boolean }) => {
     const dayTasks = getTasksForDay(tasks, date);
-    const isToday = isSameDay(date, today);
-    const isPast = date < today && !isToday;
+    const isToday  = isSameDay(date, today);
+    const isPast   = date < today && !isToday;
+    const dateKey  = date.toISOString().slice(0, 10);
+
     return (
       <div
+        data-date={dateKey}
         onDragOver={e => e.preventDefault()}
         onDrop={e => handleDrop(e, date)}
-        className={`${fullHeight ? 'min-h-[120px]' : 'min-h-[80px]'} p-1.5 rounded-xl border transition-all
-          ${isToday ? 'border-indigo-400 bg-indigo-50' : isPast ? 'border-gray-100 bg-gray-50/50' : 'border-gray-100 bg-white hover:border-indigo-200'}`}
+        className={`${fullHeight ? 'min-h-[120px]' : 'min-h-[80px]'} p-1.5 rounded-xl border transition-all`}
+        style={{
+          background: isToday ? 'rgba(var(--accent-rgb),0.08)' : isPast ? 'var(--bg-card-alt)' : 'var(--bg-card)',
+          border: `1px solid ${isToday ? 'var(--accent)' : 'var(--border)'}`,
+          opacity: isPast ? 0.7 : 1,
+        }}
       >
-        <div className={`text-xs font-bold mb-1 w-6 h-6 flex items-center justify-center rounded-full
-          ${isToday ? 'bg-indigo-600 text-white' : isPast ? 'text-gray-400' : 'text-gray-700'}`}>
+        <div className={`text-xs font-bold mb-1 w-6 h-6 flex items-center justify-center rounded-full`}
+          style={isToday
+            ? { background: 'var(--accent)', color: '#fff' }
+            : { color: isPast ? 'var(--text-muted)' : 'var(--text-primary)' }
+          }>
           {date.getDate()}
         </div>
         <div className="space-y-0.5">
@@ -189,31 +360,48 @@ export default function CalendarView({ tasks, onUpdate }: Props) {
               task={t}
               compact={!fullHeight}
               onDragStart={() => setDraggedTask(t)}
+              onTouchDragStart={handleTouchDragStart(t)}
               onMoveToDay={d => moveTaskToDay(t, d)}
+              onSelect={() => setSelectedTask(t)}
             />
           ))}
           {dayTasks.length > (fullHeight ? 10 : 3) && (
-            <div className="text-xs text-gray-400 text-center">+{dayTasks.length - (fullHeight ? 10 : 3)} נוספות</div>
+            <div className="text-xs text-center" style={{ color: 'var(--text-muted)' }}>+{dayTasks.length - (fullHeight ? 10 : 3)} נוספות</div>
           )}
         </div>
       </div>
     );
   };
 
+  const cardStyle = {
+    background: 'var(--bg-card)',
+    border: '1px solid var(--border)',
+    boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
+  };
+
   return (
-    <div className="space-y-3">
-      {/* Toolbar */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-3">
+    <div
+      className="space-y-3"
+      onTouchMove={handleTouchMove as any}
+      onTouchEnd={handleTouchEnd as any}
+    >
+      {/* ─── Task Modal ─── */}
+      {selectedTask && <TaskModal task={selectedTask} onClose={() => setSelectedTask(null)} />}
+
+      {/* ─── Toolbar ─── */}
+      <div className="rounded-2xl p-3" style={cardStyle}>
         <div className="flex items-center justify-between gap-2 flex-wrap">
           {/* Mode tabs */}
-          <div className="flex bg-gray-100 rounded-xl p-1 gap-1">
+          <div className="flex rounded-xl p-1 gap-1" style={{ background: 'var(--bg-card-alt)' }}>
             {(['day', 'week', 'month'] as CalendarMode[]).map(m => (
               <button
                 key={m}
                 onClick={() => setMode(m)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                  mode === m ? 'bg-white shadow-sm text-indigo-700' : 'text-gray-500 hover:text-gray-700'
-                }`}
+                className="px-3 py-1.5 rounded-lg text-sm font-medium transition-all"
+                style={mode === m
+                  ? { background: 'var(--bg-card)', color: 'var(--accent)', boxShadow: '0 1px 4px rgba(0,0,0,0.15)' }
+                  : { color: 'var(--text-muted)' }
+                }
               >
                 {m === 'day' ? 'יום' : m === 'week' ? 'שבוע' : 'חודש'}
               </button>
@@ -222,14 +410,18 @@ export default function CalendarView({ tasks, onUpdate }: Props) {
 
           {/* Navigation */}
           <div className="flex items-center gap-2">
-            <button onClick={() => navigate(-1)} className="w-8 h-8 flex items-center justify-center hover:bg-gray-100 rounded-lg text-gray-600 text-lg">›</button>
+            <button onClick={() => navigate(-1)} className="w-8 h-8 flex items-center justify-center rounded-lg text-lg transition-all"
+              style={{ color: 'var(--text-muted)', background: 'var(--bg-card-alt)' }}>›</button>
             <div className="text-center min-w-[180px]">
-              <span className="text-sm font-semibold text-gray-800">{getTitle()}</span>
+              <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{getTitle()}</span>
             </div>
-            <button onClick={() => navigate(1)} className="w-8 h-8 flex items-center justify-center hover:bg-gray-100 rounded-lg text-gray-600 text-lg">‹</button>
+            <button onClick={() => navigate(1)} className="w-8 h-8 flex items-center justify-center rounded-lg text-lg transition-all"
+              style={{ color: 'var(--text-muted)', background: 'var(--bg-card-alt)' }}>‹</button>
           </div>
 
-          <button onClick={goToToday} className="text-sm text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-200 transition-colors">
+          <button onClick={() => setCurrentDate(new Date())}
+            className="text-sm px-3 py-1.5 rounded-lg border transition-colors"
+            style={{ color: 'var(--accent)', borderColor: 'rgba(var(--accent-rgb),0.4)', background: 'rgba(var(--accent-rgb),0.05)' }}>
             היום
           </button>
         </div>
@@ -237,52 +429,71 @@ export default function CalendarView({ tasks, onUpdate }: Props) {
 
       {/* ─── DAY VIEW ─── */}
       {mode === 'day' && (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+        <div className="rounded-2xl p-4" style={cardStyle}>
           <div className="flex items-center gap-2 mb-4">
-            <div className={`text-lg font-bold px-3 py-1 rounded-xl ${isSameDay(currentDate, today) ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-700'}`}>
+            <div className="text-base font-bold px-3 py-1 rounded-xl"
+              style={isSameDay(currentDate, today)
+                ? { background: 'var(--accent)', color: '#fff' }
+                : { background: 'var(--bg-card-alt)', color: 'var(--text-primary)' }
+              }>
               {currentDate.toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' })}
             </div>
           </div>
           {(() => {
             const dayTasks = getTasksForDay(tasks, currentDate);
             if (dayTasks.length === 0) return (
-              <div className="text-center py-12 text-gray-400">
+              <div className="text-center py-12" style={{ color: 'var(--text-muted)' }}>
                 <div className="text-4xl mb-2">📭</div>
                 <p>אין משימות ביום זה</p>
               </div>
             );
             const groups = [
-              { label: '🔴 עדיפות גבוהה', items: dayTasks.filter(t => t.priority === 'high' && t.status !== 'completed') },
+              { label: '🔴 עדיפות גבוהה',   items: dayTasks.filter(t => t.priority === 'high'   && t.status !== 'completed') },
               { label: '🟡 עדיפות בינונית', items: dayTasks.filter(t => t.priority === 'medium' && t.status !== 'completed') },
-              { label: '🟢 עדיפות נמוכה', items: dayTasks.filter(t => t.priority === 'low' && t.status !== 'completed') },
-              { label: '✅ הושלמו', items: dayTasks.filter(t => t.status === 'completed') },
+              { label: '🟢 עדיפות נמוכה',   items: dayTasks.filter(t => t.priority === 'low'    && t.status !== 'completed') },
+              { label: '✅ הושלמו',          items: dayTasks.filter(t => t.status === 'completed') },
             ].filter(g => g.items.length > 0);
             return (
               <div className="space-y-4">
                 {groups.map(g => (
                   <div key={g.label}>
-                    <h4 className="text-xs font-semibold text-gray-500 uppercase mb-2">{g.label}</h4>
+                    <h4 className="text-xs font-semibold uppercase mb-2" style={{ color: 'var(--text-muted)' }}>{g.label}</h4>
                     <div className="space-y-2">
-                      {g.items.map(t => (
-                        <div key={t.id} className={`flex items-center gap-3 p-3 rounded-xl border ${
-                          t.status === 'completed' ? 'bg-gray-50 border-gray-100' : priorityColor[t.priority] + ' bg-opacity-30'
-                        }`}>
-                          <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                            t.priority === 'high' ? 'bg-red-500' : t.priority === 'medium' ? 'bg-yellow-500' : 'bg-green-500'
-                          }`} />
-                          <div className="flex-1">
-                            <p className={`text-sm font-medium ${t.status === 'completed' ? 'line-through text-gray-400' : 'text-gray-800'}`}>{t.title}</p>
-                            {t.description && <p className="text-xs text-gray-500 mt-0.5">{t.description}</p>}
-                            {t.due_date && <p className="text-xs text-gray-400 mt-0.5">⏰ {new Date(t.due_date).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}</p>}
+                      {g.items.map(t => {
+                        const p = priorityConfig[t.priority];
+                        return (
+                          <div
+                            key={t.id}
+                            className="flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all"
+                            style={{
+                              background: t.status === 'completed' ? 'var(--bg-card-alt)' : p.bg,
+                              border: `1px solid ${t.status === 'completed' ? 'var(--border)' : p.color + '44'}`,
+                            }}
+                            onClick={() => setSelectedTask(t)}
+                          >
+                            <div className="w-2 h-2 rounded-full flex-shrink-0"
+                              style={{ background: t.priority === 'high' ? '#f87171' : t.priority === 'medium' ? '#fbbf24' : '#4ade80' }} />
+                            <div className="flex-1">
+                              <p className="text-sm font-medium" style={{
+                                color: t.status === 'completed' ? 'var(--text-muted)' : 'var(--text-primary)',
+                                textDecoration: t.status === 'completed' ? 'line-through' : 'none',
+                              }}>{t.title}</p>
+                              {t.description && <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{t.description}</p>}
+                              {t.due_date && <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>⏰ {new Date(t.due_date).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}</p>}
+                            </div>
+                            {t.status !== 'completed' && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const d = new Date(currentDate); d.setDate(d.getDate() + 1); moveTaskToDay(t, d);
+                                }}
+                                className="text-xs px-2 py-1 rounded-lg transition-all whitespace-nowrap"
+                                style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}
+                              >למחר ›</button>
+                            )}
                           </div>
-                          {t.status !== 'completed' && (
-                            <button
-                              onClick={() => { const d = new Date(currentDate); d.setDate(d.getDate()+1); moveTaskToDay(t,d); }}
-                              className="text-xs bg-white border border-gray-200 hover:bg-indigo-50 hover:border-indigo-300 text-gray-600 hover:text-indigo-600 px-2 py-1 rounded-lg transition-all whitespace-nowrap"
-                            >למחר ›</button>
-                          )}
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 ))}
@@ -294,10 +505,10 @@ export default function CalendarView({ tasks, onUpdate }: Props) {
 
       {/* ─── WEEK VIEW ─── */}
       {mode === 'week' && (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-3">
+        <div className="rounded-2xl p-3" style={cardStyle}>
           <div className="grid grid-cols-7 gap-1 mb-2">
             {DAYS_FULL.map((d, i) => (
-              <div key={d} className="text-center text-xs font-semibold text-gray-400 py-1">
+              <div key={d} className="text-center text-xs font-semibold py-1" style={{ color: 'var(--text-muted)' }}>
                 <span className="hidden sm:inline">{d}</span>
                 <span className="sm:hidden">{DAYS_SHORT[i]}</span>
               </div>
@@ -313,10 +524,10 @@ export default function CalendarView({ tasks, onUpdate }: Props) {
 
       {/* ─── MONTH VIEW ─── */}
       {mode === 'month' && (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-3">
+        <div className="rounded-2xl p-3" style={cardStyle}>
           <div className="grid grid-cols-7 mb-2">
             {DAYS_FULL.map((d, i) => (
-              <div key={d} className="text-center text-xs font-semibold text-gray-400 py-1">
+              <div key={d} className="text-center text-xs font-semibold py-1" style={{ color: 'var(--text-muted)' }}>
                 <span className="hidden sm:inline">{d}</span>
                 <span className="sm:hidden">{DAYS_SHORT[i]}</span>
               </div>
@@ -330,13 +541,13 @@ export default function CalendarView({ tasks, onUpdate }: Props) {
         </div>
       )}
 
-      {/* Legend */}
-      <div className="flex items-center gap-4 text-xs text-gray-400 px-1 flex-wrap">
+      {/* ─── Legend ─── */}
+      <div className="flex items-center gap-4 text-xs px-1 flex-wrap" style={{ color: 'var(--text-muted)' }}>
         <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400"></span>גבוהה</span>
         <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-400"></span>בינונית</span>
         <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-400"></span>נמוכה</span>
-        <span className="text-gray-300">|</span>
-        <span>גרור משימה ליום אחר · העבר עם hover</span>
+        <span style={{ color: 'var(--border)' }}>|</span>
+        <span>לחץ על משימה לפרטים · גרור ליום אחר</span>
       </div>
     </div>
   );
