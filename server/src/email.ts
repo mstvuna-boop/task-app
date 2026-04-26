@@ -2,7 +2,7 @@ import { Resend } from 'resend';
 import { Task } from './types';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
-const FROM = 'onboarding@resend.dev';
+const FROM = 'מנהל משימות <noreply@tvuna.org.il>';
 
 export async function sendDailySummary(
   toEmail: string,
