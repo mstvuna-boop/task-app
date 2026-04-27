@@ -250,7 +250,7 @@ export default function App() {
           </div>
         )}
 
-        {viewMode === 'calendar' && <CalendarView tasks={tasks} onUpdate={handleUpdateTask} />}
+        {viewMode === 'calendar' && <CalendarView tasks={tasks} onUpdate={handleUpdateTask} currentUserId={user!.id} />}
 
         {viewMode === 'list' && showNewTask && (
           <div className="rounded-2xl p-5 mb-4" style={{ ...cardStyle, borderColor: 'var(--accent)' }}>
