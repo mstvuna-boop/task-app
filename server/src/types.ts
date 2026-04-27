@@ -3,6 +3,7 @@ export interface User {
   email: string;
   name: string;
   picture?: string;
+  approved: number;
   created_at?: string;
 }
 
@@ -14,6 +15,9 @@ export interface Task {
   status: 'pending' | 'in_progress' | 'completed';
   priority: 'low' | 'medium' | 'high';
   due_date?: string;
+  completed_at?: string;
+  assigned_to?: string;
+  assigned_by?: string;
   created_at: string;
   updated_at: string;
   reminders?: Reminder[];

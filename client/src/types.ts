@@ -3,6 +3,14 @@ export interface User {
   email: string;
   name: string;
   picture?: string;
+  is_admin?: boolean;
+}
+
+export interface AppUser {
+  id: string;
+  name: string;
+  email: string;
+  picture?: string;
 }
 
 export interface Reminder {
@@ -23,6 +31,10 @@ export interface Task {
   created_at: string;
   updated_at: string;
   reminders: Reminder[];
+  assigned_to?: string;
+  assigned_by?: string;
+  assigned_to_name?: string;
+  assigned_by_name?: string;
 }
 
 export type TaskStatus = Task['status'];

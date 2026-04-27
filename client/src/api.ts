@@ -1,4 +1,4 @@
-import { Task, User } from './types';
+import { Task, User, AppUser } from './types';
 
 const BASE = '';
 
@@ -43,4 +43,14 @@ export const api = {
 
   deleteReminder: (taskId: number, reminderId: number) =>
     request(`/api/tasks/${taskId}/reminders/${reminderId}`, { method: 'DELETE' }),
+
+  // Users
+  getUsers: () => request<AppUser[]>('/api/users'),
+
+  // Admin
+  getAdminUsers: () => request<(AppUser & { approved: number; created_at: string })[]>('/api/admin/users'),
+  approveUser: (userId: string) =>
+    request<{ success: boolean }>(`/api/admin/approve/${userId}`, { method: 'POST' }),
+  revokeUser: (userId: string) =>
+    request<{ success: boolean }>(`/api/admin/revoke/${userId}`, { method: 'POST' }),
 };

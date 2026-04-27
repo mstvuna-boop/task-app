@@ -3,6 +3,8 @@ import { Toaster, toast } from 'react-hot-toast';
 import { api } from './api';
 import { User, Task, TaskStatus, TaskPriority } from './types';
 import LoginPage from './components/LoginPage';
+import PendingPage from './components/PendingPage';
+import AdminPanel from './components/AdminPanel';
 import Header from './components/Header';
 import TaskCard from './components/TaskCard';
 import TaskForm from './components/TaskForm';
@@ -19,7 +21,8 @@ const statusTabs: { value: FilterStatus; label: string }[] = [
 ];
 
 export default function App() {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser]       = useState<User | null>(null);
+  const [pending, setPending] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [tasksLoading, setTasksLoading] = useState(false);
@@ -46,14 +49,24 @@ export default function App() {
   }, [isDark]);
 
   useEffect(() => {
-    api.getMe().then(setUser).catch(() => setUser(null)).finally(() => setAuthLoading(false));
+    api.getMe()
+      .then(setUser)
+      .catch(e => {
+        if (e.message === 'pending') setPending(true);
+        else setUser(null);
+      })
+      .finally(() => setAuthLoading(false));
   }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('login') === 'success') {
       window.history.replaceState({}, '', '/');
-      api.getMe().then(setUser).catch(() => {});
+      api.getMe().then(setUser).catch(e => { if (e.message === 'pending') setPending(true); });
+    }
+    if (params.get('pending') === 'true') {
+      window.history.replaceState({}, '', '/');
+      setPending(true);
     }
     if (params.get('error') === 'auth') {
       window.history.replaceState({}, '', '/');
@@ -97,17 +110,28 @@ export default function App() {
     t.title.toLowerCase().includes(search.toLowerCase()) ||
     t.description.toLowerCase().includes(search.toLowerCase());
 
-  // Main list — active tasks only
-  const filtered = tasks.filter((t) => {
+  // Split: my tasks vs assigned to me
+  const myTasks       = tasks.filter(t => t.user_id === user!.id);
+  const inboxTasks    = tasks.filter(t => t.assigned_to === user!.id);
+
+  // Main list — my active tasks only
+  const filtered = myTasks.filter((t) => {
     if (t.status === 'completed') return false;
     if (filterStatus !== 'all' && t.status !== filterStatus) return false;
     if (filterPriority !== 'all' && t.priority !== filterPriority) return false;
     return matchesSearch(t);
   });
 
-  // Separate completed list — respects search & priority filter only
+  // Inbox — active tasks assigned to me
+  const filteredInbox = inboxTasks.filter(t => {
+    if (t.status === 'completed') return false;
+    return matchesSearch(t);
+  });
+
+  // Completed — my own completed + assigned-to-me completed
   const filteredCompleted = tasks.filter((t) => {
     if (t.status !== 'completed') return false;
+    if (t.user_id !== user!.id && t.assigned_to !== user!.id) return false;
     if (filterPriority !== 'all' && t.priority !== filterPriority) return false;
     return matchesSearch(t);
   });
@@ -131,6 +155,7 @@ export default function App() {
     );
   }
 
+  if (pending) return <PendingPage onLogout={() => { setPending(false); setUser(null); }} />;
   if (!user) return <LoginPage />;
 
   const cardStyle = {
@@ -147,6 +172,9 @@ export default function App() {
       <Header user={user} onLogout={() => setUser(null)} isDark={isDark} onToggleTheme={() => setIsDark(!isDark)} />
 
       <main className="max-w-5xl mx-auto px-4 py-6">
+        {/* Admin panel */}
+        {user.is_admin && <AdminPanel />}
+
         {/* Stats */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
           {[
@@ -227,7 +255,7 @@ export default function App() {
         {viewMode === 'list' && showNewTask && (
           <div className="rounded-2xl p-5 mb-4" style={{ ...cardStyle, borderColor: 'var(--accent)' }}>
             <h2 className="text-base font-semibold mb-4" style={{ color: 'var(--accent)' }}>✨ משימה חדשה</h2>
-            <TaskForm onSubmit={handleCreateTask} onCancel={() => setShowNewTask(false)} loading={savingNew} />
+            <TaskForm onSubmit={handleCreateTask} onCancel={() => setShowNewTask(false)} loading={savingNew} currentUserId={user.id} />
           </div>
         )}
 
@@ -257,6 +285,25 @@ export default function App() {
                 {filtered.map((task) => (
                   <TaskCard key={task.id} task={task} onUpdate={handleUpdateTask} onDelete={handleDeleteTask} />
                 ))}
+              </div>
+            )}
+
+            {/* ── Inbox — tasks assigned to me ── */}
+            {filteredInbox.length > 0 && (
+              <div className="mt-6">
+                <div className="flex items-center gap-2 mb-2 px-1">
+                  <span className="text-base">📥</span>
+                  <span className="text-sm font-bold" style={{ color: 'var(--accent)' }}>משימות שהוקצו לך</span>
+                  <span className="px-2 py-0.5 rounded-full text-xs font-bold"
+                    style={{ background: 'rgba(var(--accent-rgb),0.15)', color: 'var(--accent)' }}>
+                    {filteredInbox.length}
+                  </span>
+                </div>
+                <div className="space-y-3">
+                  {filteredInbox.map(task => (
+                    <TaskCard key={task.id} task={task} onUpdate={handleUpdateTask} onDelete={handleDeleteTask} currentUserId={user.id} />
+                  ))}
+                </div>
               </div>
             )}
 

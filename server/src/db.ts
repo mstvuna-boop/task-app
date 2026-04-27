@@ -10,16 +10,13 @@ const db = new DatabaseSync(path.join(dbDir, 'tasks.db'));
 db.exec('PRAGMA journal_mode = WAL');
 db.exec('PRAGMA foreign_keys = ON');
 
-// Migration: add completed_at if missing
-try { db.exec('ALTER TABLE tasks ADD COLUMN completed_at DATETIME'); } catch {}
-
-
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     email TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL,
     picture TEXT,
+    approved INTEGER DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
@@ -32,6 +29,8 @@ db.exec(`
     priority TEXT DEFAULT 'medium' CHECK(priority IN ('low','medium','high')),
     due_date TEXT,
     completed_at DATETIME,
+    assigned_to TEXT REFERENCES users(id) ON DELETE SET NULL,
+    assigned_by TEXT REFERENCES users(id) ON DELETE SET NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
@@ -45,5 +44,14 @@ db.exec(`
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 `);
+
+// Migrations for existing databases
+try { db.exec('ALTER TABLE tasks ADD COLUMN completed_at DATETIME'); } catch {}
+try { db.exec('ALTER TABLE users ADD COLUMN approved INTEGER DEFAULT 0'); } catch {}
+try { db.exec('ALTER TABLE tasks ADD COLUMN assigned_to TEXT REFERENCES users(id) ON DELETE SET NULL'); } catch {}
+try { db.exec('ALTER TABLE tasks ADD COLUMN assigned_by TEXT REFERENCES users(id) ON DELETE SET NULL'); } catch {}
+
+// Auto-approve all pre-existing users (before approval system was added)
+db.exec(`UPDATE users SET approved = 1 WHERE approved = 0`);
 
 export default db;

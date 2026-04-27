@@ -15,6 +15,7 @@ import { User } from './types';
 const app = express();
 const PORT = process.env.PORT || 3001;
 const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
+const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || '').toLowerCase();
 
 app.set('trust proxy', 1);
 app.use(cors({ origin: CLIENT_URL, credentials: true }));
@@ -50,11 +51,15 @@ passport.use(
 
       if (!email) return done(new Error('No email from Google'));
 
+      // Auto-approve if this is the admin email
+      const isAdmin = email.toLowerCase() === ADMIN_EMAIL;
+
       db.prepare(
-        `INSERT INTO users (id, email, name, picture)
-         VALUES (?, ?, ?, ?)
-         ON CONFLICT(id) DO UPDATE SET name=excluded.name, picture=excluded.picture`
-      ).run(profile.id, email, name, picture || null);
+        `INSERT INTO users (id, email, name, picture, approved)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET name=excluded.name, picture=excluded.picture,
+           approved=CASE WHEN excluded.approved=1 THEN 1 ELSE users.approved END`
+      ).run(profile.id, email, name, picture || null, isAdmin ? 1 : 0);
 
       const user = db.prepare('SELECT * FROM users WHERE id = ?').get(profile.id) as unknown as User;
       done(null, user);
@@ -73,13 +78,23 @@ app.get('/auth/google', passport.authenticate('google', { scope: ['profile', 'em
 app.get(
   '/auth/google/callback',
   passport.authenticate('google', { failureRedirect: `${CLIENT_URL}?error=auth` }),
-  (_req, res) => res.redirect(`${CLIENT_URL}?login=success`)
+  (req, res) => {
+    const user = req.user as User;
+    if (!user.approved) {
+      return res.redirect(`${CLIENT_URL}?pending=true`);
+    }
+    res.redirect(`${CLIENT_URL}?login=success`);
+  }
 );
 
 app.get('/auth/me', (req, res) => {
   if (req.user) {
-    const { id, email, name, picture } = req.user as User;
-    res.json({ id, email, name, picture });
+    const user = req.user as User;
+    if (!user.approved) {
+      return res.status(403).json({ error: 'pending' });
+    }
+    const isAdmin = user.email.toLowerCase() === ADMIN_EMAIL;
+    res.json({ id: user.id, email: user.email, name: user.name, picture: user.picture, is_admin: isAdmin });
   } else {
     res.status(401).json({ error: 'Not authenticated' });
   }
@@ -87,6 +102,48 @@ app.get('/auth/me', (req, res) => {
 
 app.post('/auth/logout', (req, res) => {
   req.logout(() => res.json({ success: true }));
+});
+
+// ── Admin routes ──────────────────────────────────────────────
+function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
+  if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+  const user = req.user as User;
+  if (user.email.toLowerCase() !== ADMIN_EMAIL) return res.status(403).json({ error: 'Forbidden' });
+  next();
+}
+
+// List all users (admin)
+app.get('/api/admin/users', requireAdmin, (_req, res) => {
+  const users = db.prepare(
+    `SELECT id, email, name, picture, approved, created_at FROM users ORDER BY approved ASC, created_at DESC`
+  ).all();
+  res.json(users);
+});
+
+// Approve a user (admin)
+app.post('/api/admin/approve/:userId', requireAdmin, (req, res) => {
+  db.prepare('UPDATE users SET approved = 1 WHERE id = ?').run(req.params.userId);
+  res.json({ success: true });
+});
+
+// Revoke a user (admin)
+app.post('/api/admin/revoke/:userId', requireAdmin, (req, res) => {
+  const user = db.prepare('SELECT email FROM users WHERE id = ?').get(req.params.userId) as any;
+  if (user?.email?.toLowerCase() === ADMIN_EMAIL) {
+    return res.status(400).json({ error: 'Cannot revoke admin' });
+  }
+  db.prepare('UPDATE users SET approved = 0 WHERE id = ?').run(req.params.userId);
+  res.json({ success: true });
+});
+
+// List approved users (for task assignment dropdown)
+app.get('/api/users', (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+  const me = (req.user as User).id;
+  const users = db.prepare(
+    `SELECT id, name, email, picture FROM users WHERE approved = 1 AND id != ? ORDER BY name`
+  ).all(me);
+  res.json(users);
 });
 
 app.use('/api/tasks', tasksRouter);

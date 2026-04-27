@@ -3,7 +3,14 @@
     "allow": [
       "Bash(npm install *)",
       "PowerShell(Get-ChildItem \"C:\\\\Program Files\\\\nodejs\\\\npm.cmd\" -ErrorAction SilentlyContinue; Get-ChildItem \"$env:APPDATA\\\\npm\\\\npm.cmd\" -ErrorAction SilentlyContinue; Get-ChildItem \"C:\\\\Program Files \\(x86\\)\\\\nodejs\" -ErrorAction SilentlyContinue | Select-Object -First 3; where.exe node 2>$null; where.exe npm 2>$null)",
-      "PowerShell(Get-ChildItem \"C:\\\\\" -Directory | Select-Object Name; Get-ChildItem \"$env:LOCALAPPDATA\" -Directory | Where-Object { $_.Name -match 'node|nvm|fnm' } | Select-Object Name)"
+      "PowerShell(Get-ChildItem \"C:\\\\\" -Directory | Select-Object Name; Get-ChildItem \"$env:LOCALAPPDATA\" -Directory | Where-Object { $_.Name -match 'node|nvm|fnm' } | Select-Object Name)",
+      "Bash(npx tsc *)",
+      "Bash(npm run *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(node -e \"const p=require\\('./package.json'\\); console.log\\(p.devDependencies['vite-plugin-pwa']\\)\")",
+      "Bash(node generate-icons.mjs)"
     ]
   }
 }

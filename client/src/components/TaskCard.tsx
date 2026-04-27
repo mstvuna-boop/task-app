@@ -9,6 +9,7 @@ interface Props {
   task: Task;
   onUpdate: (task: Task) => void;
   onDelete: (id: number) => void;
+  currentUserId?: string;
 }
 
 const priorityConfig = {
@@ -29,11 +30,14 @@ function formatDate(iso: string) {
   });
 }
 
-export default function TaskCard({ task, onUpdate, onDelete }: Props) {
-  const [editing, setEditing] = useState(false);
-  const [expanded, setExpanded] = useState(false);
-  const [saving, setSaving] = useState(false);
+export default function TaskCard({ task, onUpdate, onDelete, currentUserId }: Props) {
+  const [editing,       setEditing]       = useState(false);
+  const [expanded,      setExpanded]      = useState(false);
+  const [saving,        setSaving]        = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const isOwner    = !currentUserId || task.user_id === currentUserId;
+  const isAssignee = currentUserId && task.assigned_to === currentUserId;
 
   const handleUpdate = async (data: Partial<Task>) => {
     setSaving(true);
@@ -69,33 +73,47 @@ export default function TaskCard({ task, onUpdate, onDelete }: Props) {
   };
 
   const priority = priorityConfig[task.priority];
-  const status = statusConfig[task.status];
-  const isOverdue = task.due_date && task.status !== 'completed' && new Date(task.due_date) < new Date();
-  const pendingReminders = task.reminders.filter((r) => !r.sent).length;
-
+  const status   = statusConfig[task.status];
+  const isOverdue   = task.due_date && task.status !== 'completed' && new Date(task.due_date) < new Date();
+  const pendingReminders = task.reminders.filter(r => !r.sent).length;
   const isCompleted = task.status === 'completed';
 
   return (
     <div className="task-card rounded-2xl transition-all" style={{
       background: isCompleted ? 'var(--bg-card-alt)' : 'var(--bg-card)',
-      border: `1px solid ${isCompleted ? 'var(--border)' : isOverdue ? 'rgba(248,113,113,0.4)' : 'var(--border)'}`,
+      border: `1px solid ${isCompleted ? 'var(--border)' : isOverdue ? 'rgba(248,113,113,0.4)' : isAssignee ? 'rgba(var(--accent-rgb),0.35)' : 'var(--border)'}`,
       opacity: isCompleted ? 0.55 : 1,
       filter: isCompleted ? 'grayscale(30%)' : 'none',
     }}>
       <div className="p-4">
         {editing ? (
-          <TaskForm initial={task} onSubmit={handleUpdate} onCancel={() => setEditing(false)} loading={saving} />
+          <TaskForm initial={task} onSubmit={handleUpdate} onCancel={() => setEditing(false)} loading={saving} currentUserId={currentUserId} />
         ) : (
           <>
+            {/* "Assigned by" banner */}
+            {isAssignee && task.assigned_by_name && (
+              <div className="flex items-center gap-1.5 mb-2 text-xs px-2 py-1 rounded-lg w-fit"
+                style={{ background: 'rgba(var(--accent-rgb),0.1)', color: 'var(--accent)' }}>
+                📥 הוקצה אליך על-ידי <strong>{task.assigned_by_name}</strong>
+              </div>
+            )}
+            {/* "Assigned to" banner (for owner) */}
+            {isOwner && task.assigned_to_name && (
+              <div className="flex items-center gap-1.5 mb-2 text-xs px-2 py-1 rounded-lg w-fit"
+                style={{ background: 'rgba(251,191,36,0.1)', color: '#fbbf24' }}>
+                👤 הוקצה לְ<strong>{task.assigned_to_name}</strong>
+              </div>
+            )}
+
             <div className="flex items-start gap-3">
               <button onClick={toggleComplete}
                 className="mt-0.5 w-5 h-5 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-all"
-                style={task.status === 'completed'
+                style={isCompleted
                   ? { background: '#4ade80', borderColor: '#4ade80', color: '#fff' }
                   : { borderColor: 'var(--border)' }
                 }
               >
-                {task.status === 'completed' && (
+                {isCompleted && (
                   <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                   </svg>
@@ -131,14 +149,14 @@ export default function TaskCard({ task, onUpdate, onDelete }: Props) {
               <div className="flex items-center gap-1 flex-shrink-0">
                 <button onClick={() => setExpanded(!expanded)} className="p-1.5 rounded-lg" style={{ color: 'var(--text-muted)' }}>🔔</button>
                 <button onClick={() => setEditing(true)} className="p-1.5 rounded-lg" style={{ color: 'var(--text-muted)' }}>✏️</button>
-                {confirmDelete ? (
+                {isOwner && (confirmDelete ? (
                   <div className="flex gap-1">
                     <button onClick={handleDelete} className="text-xs px-2 py-1 rounded-lg" style={{ background: 'rgba(248,113,113,0.15)', color: '#f87171', border: '1px solid rgba(248,113,113,0.3)' }}>מחק</button>
                     <button onClick={() => setConfirmDelete(false)} className="text-xs px-2 py-1 rounded-lg" style={{ background: 'var(--bg-card-alt)', color: 'var(--text-muted)' }}>ביטול</button>
                   </div>
                 ) : (
                   <button onClick={() => setConfirmDelete(true)} className="p-1.5 rounded-lg" style={{ color: 'var(--text-muted)' }}>🗑️</button>
-                )}
+                ))}
               </div>
             </div>
             {expanded && <ReminderPanel task={task} onUpdate={onUpdate} />}
