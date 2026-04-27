@@ -117,7 +117,7 @@ router.put('/:id', requireAuth, (req, res) => {
     isOwner ? (description || '') : task.description,
     status,
     isOwner ? priority : task.priority,
-    isOwner ? (due_date || null) : task.due_date,
+    due_date || null,          // both owner and assignee can move the task date
     completedAt,
     newAssignedTo || null,
     newAssignedBy || null,

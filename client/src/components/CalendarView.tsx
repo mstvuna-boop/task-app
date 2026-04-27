@@ -306,8 +306,9 @@ export default function CalendarView({ tasks, onUpdate, currentUserId }: Props) 
   const today = new Date();
   const [mode, setMode]               = useState<CalendarMode>('month');
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [draggedTask, setDraggedTask] = useState<Task | null>(null);
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [draggedTask,   setDraggedTask]   = useState<Task | null>(null);
+  const [selectedTask,  setSelectedTask]  = useState<Task | null>(null);
+  const [expandedDays,  setExpandedDays]  = useState<Set<string>>(new Set());
 
   // Touch drag state
   const calendarRef    = useRef<HTMLDivElement>(null);
@@ -332,11 +333,20 @@ export default function CalendarView({ tasks, onUpdate, currentUserId }: Props) 
   /* ── Move task ── */
   const moveTaskToDay = useCallback(async (task: Task, targetDate: Date) => {
     const src = task.due_date ? new Date(task.due_date) : new Date();
-    targetDate.setHours(src.getHours() || 9, src.getMinutes() || 0);
+    const d = new Date(targetDate); // avoid mutating caller's Date
+    d.setHours(src.getHours() || 9, src.getMinutes() || 0);
     try {
-      const updated = await api.updateTask(task.id, { ...task, due_date: targetDate.toISOString() });
+      const updated = await api.updateTask(task.id, {
+        ...task,
+        due_date: d.toISOString(),
+        // preserve assignment fields explicitly
+        assigned_to: task.assigned_to,
+        assigned_by: task.assigned_by,
+      });
       onUpdate(updated);
-      toast.success(`הועבר ל-${targetDate.toLocaleDateString('he-IL')}`);
+      // if this task is open in the modal, refresh it there too
+      setSelectedTask(prev => prev?.id === updated.id ? updated : prev);
+      toast.success(`הועבר ל-${d.toLocaleDateString('he-IL')}`);
     } catch {
       toast.error('שגיאה בהעברת המשימה');
     }
@@ -473,6 +483,19 @@ export default function CalendarView({ tasks, onUpdate, currentUserId }: Props) 
     const isToday  = isSameDay(date, today);
     const isPast   = date < today && !isToday;
     const dateKey  = date.toISOString().slice(0, 10);
+    const limit    = fullHeight ? 10 : 3;
+    const isExpanded = expandedDays.has(dateKey);
+    const shown    = isExpanded ? dayTasks.length : limit;
+    const hidden   = dayTasks.length - shown;
+
+    const toggleExpand = (e: React.MouseEvent) => {
+      e.stopPropagation();
+      setExpandedDays(prev => {
+        const next = new Set(prev);
+        next.has(dateKey) ? next.delete(dateKey) : next.add(dateKey);
+        return next;
+      });
+    };
 
     return (
       <div
@@ -486,7 +509,7 @@ export default function CalendarView({ tasks, onUpdate, currentUserId }: Props) 
           opacity: isPast ? 0.7 : 1,
         }}
       >
-        <div className={`text-xs font-bold mb-1 w-6 h-6 flex items-center justify-center rounded-full`}
+        <div className="text-xs font-bold mb-1 w-6 h-6 flex items-center justify-center rounded-full"
           style={isToday
             ? { background: 'var(--accent)', color: '#fff' }
             : { color: isPast ? 'var(--text-muted)' : 'var(--text-primary)' }
@@ -494,7 +517,7 @@ export default function CalendarView({ tasks, onUpdate, currentUserId }: Props) 
           {date.getDate()}
         </div>
         <div className="space-y-0.5">
-          {dayTasks.slice(0, fullHeight ? 10 : 3).map(t => (
+          {dayTasks.slice(0, shown).map(t => (
             <TaskPill
               key={t.id}
               task={t}
@@ -508,8 +531,25 @@ export default function CalendarView({ tasks, onUpdate, currentUserId }: Props) 
               onToggleComplete={() => toggleComplete(t)}
             />
           ))}
-          {dayTasks.length > (fullHeight ? 10 : 3) && (
-            <div className="text-xs text-center" style={{ color: 'var(--text-muted)' }}>+{dayTasks.length - (fullHeight ? 10 : 3)} נוספות</div>
+
+          {/* Expand / collapse toggle */}
+          {hidden > 0 && (
+            <button
+              onClick={toggleExpand}
+              className="w-full text-xs rounded py-0.5 font-semibold transition-all"
+              style={{ color: 'var(--accent)', background: 'rgba(var(--accent-rgb),0.08)' }}
+            >
+              +{hidden} נוספות ▾
+            </button>
+          )}
+          {isExpanded && dayTasks.length > limit && (
+            <button
+              onClick={toggleExpand}
+              className="w-full text-xs rounded py-0.5 transition-all"
+              style={{ color: 'var(--text-muted)' }}
+            >
+              הסתר ▴
+            </button>
           )}
         </div>
       </div>
